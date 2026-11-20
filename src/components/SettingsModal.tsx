@@ -38,6 +38,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     location_code: 'Shanghai',
     weather_provider: 'open-meteo',
     caldav_url: '',
+    caldav_todo_url: '',
     caldav_user: '',
     caldav_password: '',
     calendar_color: '#3b82f6',
@@ -93,8 +94,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2000);
 
-      // 如果填写了 CalDAV URL，保存后自动执行同步
-      if (settings.caldav_url) {
+      // 如果填写了任一 CalDAV URL，保存后自动执行同步
+      if (settings.caldav_url || settings.caldav_todo_url) {
         setIsSyncingCaldav(true);
         setCaldavSyncMsg(null);
         try {
@@ -112,31 +113,36 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           setIsSyncingCaldav(false);
         }
       }
-    } catch (err) {
-      alert('保存设置失败');
+    } catch (err: any) {
+      alert(err.message || '保存设置失败');
     }
   };
 
   const handleTestCaldav = async () => {
-    if (!settings.caldav_url) {
-      setCaldavTestMsg({ text: '请先填写 CalDAV 服务器 URL', type: 'error' });
+    if (!settings.caldav_url && !settings.caldav_todo_url) {
+      setCaldavTestMsg({ text: '请至少填写日历或待办服务器 URL', type: 'error' });
       return;
     }
     setIsTestingCaldav(true);
     setCaldavTestMsg(null);
     try {
-      const res = await api.testCalDAV(settings.caldav_url, settings.caldav_user, settings.caldav_password);
+      const res = await api.testCalDAV({
+        calendar_url: settings.caldav_url,
+        todo_url: settings.caldav_todo_url,
+        username: settings.caldav_user,
+        password: settings.caldav_password
+      });
       setCaldavTestMsg({ text: res.message, type: res.success ? 'success' : 'error' });
     } catch (err: any) {
-      setCaldavTestMsg({ text: '连接测试失败', type: 'error' });
+      setCaldavTestMsg({ text: `连接测试失败: ${err.message}`, type: 'error' });
     } finally {
       setIsTestingCaldav(false);
     }
   };
 
   const handleSyncCaldav = async () => {
-    if (!settings.caldav_url) {
-      setCaldavSyncMsg({ text: '请先配置并保存 CalDAV 服务器 URL', type: 'error' });
+    if (!settings.caldav_url && !settings.caldav_todo_url) {
+      setCaldavSyncMsg({ text: '请先配置并保存日历或待办服务器 URL', type: 'error' });
       return;
     }
     setIsSyncingCaldav(true);
@@ -339,13 +345,30 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-zinc-400 mb-1">CalDAV 服务器 URL</label>
+                <label className="block text-xs font-medium text-zinc-300 mb-1 flex items-center justify-between">
+                  <span>日历日程集合 URL (VEVENT)</span>
+                  <span className="text-[10px] text-zinc-500">用于月视图日程</span>
+                </label>
                 <input
                   type="text"
                   value={settings.caldav_url || ''}
                   onChange={e => setSettings({ ...settings, caldav_url: e.target.value })}
-                  placeholder="https://cal.example.com/radicale/user/calendar.ics/"
-                  className="w-full px-3 py-1.5 text-xs bg-zinc-900 border border-zinc-700 rounded text-zinc-100"
+                  placeholder="https://rili.359261634.xyz/beyond333350/a2264f90-750d-cb51-fcd9-dffc825ff915/"
+                  className="w-full px-3 py-1.5 text-xs bg-zinc-900 border border-zinc-700 rounded text-zinc-100 focus:outline-hidden focus:border-blue-500 font-mono text-[11px]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-zinc-300 mb-1 flex items-center justify-between">
+                  <span>待办任务集合 URL (VTODO)</span>
+                  <span className="text-[10px] text-zinc-500">用于左侧栏待办清单</span>
+                </label>
+                <input
+                  type="text"
+                  value={settings.caldav_todo_url || ''}
+                  onChange={e => setSettings({ ...settings, caldav_todo_url: e.target.value })}
+                  placeholder="https://rili.359261634.xyz/beyond333350/9209924e-72f6-c884-6e97-e546a6f9022a/"
+                  className="w-full px-3 py-1.5 text-xs bg-zinc-900 border border-zinc-700 rounded text-zinc-100 focus:outline-hidden focus:border-blue-500 font-mono text-[11px]"
                 />
               </div>
 

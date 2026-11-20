@@ -79,16 +79,26 @@ app.get('/api/settings', authenticateToken, (req: any, res: any) => {
 });
 
 app.put('/api/settings', authenticateToken, (req: any, res: any) => {
-  const { location_code, weather_provider, caldav_url, caldav_user, caldav_password, calendar_color, todo_color } = req.body;
+  const {
+    location_code,
+    weather_provider,
+    caldav_url,
+    caldav_todo_url,
+    caldav_user,
+    caldav_password,
+    calendar_color,
+    todo_color
+  } = req.body;
   db.prepare(`
     UPDATE user_settings SET
-      location_code = ?, weather_provider = ?, caldav_url = ?, caldav_user = ?,
-      caldav_password = ?, calendar_color = ?, todo_color = ?
+      location_code = ?, weather_provider = ?, caldav_url = ?, caldav_todo_url = ?,
+      caldav_user = ?, caldav_password = ?, calendar_color = ?, todo_color = ?
     WHERE user_id = ?
   `).run(
     location_code || 'Shanghai',
     weather_provider || 'open-meteo',
     caldav_url || '',
+    caldav_todo_url || '',
     caldav_user || '',
     caldav_password || '',
     calendar_color || '#3b82f6',
@@ -98,15 +108,44 @@ app.put('/api/settings', authenticateToken, (req: any, res: any) => {
   res.json({ success: true });
 });
 
-// CalDAV 真实连接测试接口
+// CalDAV 真实连接测试接口 (支持测试日历和待办双 URL)
 app.post('/api/settings/caldav-test', authenticateToken, async (req: any, res: any) => {
-  const { url, username, password } = req.body;
-  if (!url) {
-    return res.status(400).json({ success: false, message: 'CalDAV 服务器 URL 不能为空' });
+  const { url, calendar_url, todo_url, username, password } = req.body;
+  const testCal = (calendar_url || url || '').trim();
+  const testTodo = (todo_url || '').trim();
+
+  if (!testCal && !testTodo) {
+    return res.status(400).json({ success: false, message: '请至少输入日历或待办服务器 URL' });
   }
+
   try {
-    const result = await testCalDAVConnection(url, username, password);
-    res.status(result.success ? 200 : 400).json(result);
+    const messages: string[] = [];
+    let allOk = true;
+
+    if (testCal) {
+      const resCal = await testCalDAVConnection(testCal, username, password);
+      if (resCal.success) {
+        messages.push('日历地址连接成功');
+      } else {
+        allOk = false;
+        messages.push(`日历连接失败: ${resCal.message}`);
+      }
+    }
+
+    if (testTodo) {
+      const resTodo = await testCalDAVConnection(testTodo, username, password);
+      if (resTodo.success) {
+        messages.push('待办地址连接成功');
+      } else {
+        allOk = false;
+        messages.push(`待办连接失败: ${resTodo.message}`);
+      }
+    }
+
+    res.status(allOk ? 200 : 400).json({
+      success: allOk,
+      message: messages.join('；')
+    });
   } catch (e: any) {
     res.status(500).json({ success: false, message: `连接测试异常: ${e.message}` });
   }

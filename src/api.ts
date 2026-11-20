@@ -24,6 +24,24 @@ const getHeaders = () => {
   };
 };
 
+async function parseResponseJson(res: Response, fallbackMessage: string): Promise<any> {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    if (res.status === 502 || res.status === 504 || text.includes('ECONNREFUSED') || text.includes('Proxy error') || text.includes('failed to fetch')) {
+      return {
+        success: false,
+        message: `无法连接到后端服务 (HTTP ${res.status})，请确认已运行 npm run dev 且后端服务已在 3000 端口启动`
+      };
+    }
+    return {
+      success: false,
+      message: `${fallbackMessage}: HTTP ${res.status} ${text.slice(0, 100)}`
+    };
+  }
+}
+
 export const api = {
   // 认证
   async register(username: string, password: string): Promise<UserAuth> {
@@ -122,32 +140,60 @@ export const api = {
   },
 
   async updateSettings(settings: Partial<UserSettings>): Promise<{ success: boolean }> {
-    const res = await fetch(`${API_BASE}/settings`, {
-      method: 'PUT',
-      headers: getHeaders(),
-      body: JSON.stringify(settings)
-    });
-    if (!res.ok) throw new Error('更新设置失败');
-    return res.json();
+    try {
+      const res = await fetch(`${API_BASE}/settings`, {
+        method: 'PUT',
+        headers: getHeaders(),
+        body: JSON.stringify(settings)
+      });
+      if (!res.ok) {
+        const errData = await parseResponseJson(res, '更新设置失败');
+        throw new Error(errData.message || '更新设置失败');
+      }
+      return await res.json();
+    } catch (e: any) {
+      throw new Error(e.message || '更新设置失败，请确认后端 3000 服务正常运行');
+    }
   },
 
-  async testCalDAV(url: string, username?: string, password?: string): Promise<{ success: boolean; message: string }> {
-    const res = await fetch(`${API_BASE}/settings/caldav-test`, {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify({ url, username, password })
-    });
-    const data = await res.json().catch(() => ({ success: false, message: '响应解析失败' }));
-    return data;
+  async testCalDAV(
+    options: { url?: string; calendar_url?: string; todo_url?: string; username?: string; password?: string } | string,
+    username?: string,
+    password?: string
+  ): Promise<{ success: boolean; message: string }> {
+    const payload = typeof options === 'string'
+      ? { url: options, username, password }
+      : options;
+
+    try {
+      const res = await fetch(`${API_BASE}/settings/caldav-test`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify(payload)
+      });
+      return await parseResponseJson(res, '测试连接失败');
+    } catch (e: any) {
+      return {
+        success: false,
+        message: `请求失败: ${e.message || '网络连接错误，请确认后端服务已启动'}`
+      };
+    }
   },
 
   async syncCalDAV(): Promise<{ success: boolean; count: number; message: string }> {
-    const res = await fetch(`${API_BASE}/settings/caldav-sync`, {
-      method: 'POST',
-      headers: getHeaders()
-    });
-    const data = await res.json().catch(() => ({ success: false, count: 0, message: '同步请求异常' }));
-    return data;
+    try {
+      const res = await fetch(`${API_BASE}/settings/caldav-sync`, {
+        method: 'POST',
+        headers: getHeaders()
+      });
+      return await parseResponseJson(res, '同步请求失败');
+    } catch (e: any) {
+      return {
+        success: false,
+        count: 0,
+        message: `同步失败: ${e.message || '网络连接异常，请确认后端服务已启动'}`
+      };
+    }
   },
 
   // 天气查询

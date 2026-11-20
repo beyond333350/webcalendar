@@ -265,14 +265,135 @@ export async function testCalDAVConnection(urlStr: string, username?: string, pa
   }
 }
 
-// 执行 CalDAV 同步并入库
+// 从指定 CalDAV 集合或单个 ICS 文件拉取并解析事项
+async function fetchItemsFromUrl(urlStr: string, headers: Record<string, string>): Promise<ParsedItem[]> {
+  const items: ParsedItem[] = [];
+  const cleanUrl = urlStr.trim();
+  if (!cleanUrl) return items;
+
+  // 情况 1: 如果 URL 直接以 .ics 结尾，直接 GET 单文件
+  if (cleanUrl.toLowerCase().endsWith('.ics')) {
+    try {
+      const res = await fetch(cleanUrl, { headers });
+      if (res.ok) {
+        const icsText = await res.text();
+        return parseICS(icsText);
+      }
+    } catch {
+      return items;
+    }
+  }
+
+  // 情况 2: 标准 CalDAV 集合 URL，发送 REPORT 请求
+  const targetUrl = cleanUrl.endsWith('/') ? cleanUrl : `${cleanUrl}/`;
+  const reportXml = `<?xml version="1.0" encoding="utf-8" ?>
+<c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
+    <d:prop>
+        <d:getetag />
+        <c:calendar-data />
+    </d:prop>
+    <c:filter>
+        <c:comp-filter name="VCALENDAR" />
+    </c:filter>
+</c:calendar-query>`;
+
+  let reportSuccess = false;
+  try {
+    const reportRes = await fetch(targetUrl, {
+      method: 'REPORT',
+      headers: {
+        ...headers,
+        'Depth': '1',
+        'Content-Type': 'application/xml; charset=utf-8'
+      },
+      body: reportXml
+    });
+
+    if (reportRes.status === 207 || reportRes.status === 200) {
+      const xmlText = await reportRes.text();
+      const calendarDataRegex = /<(?:[a-zA-Z0-9_-]+:)?calendar-data[^>]*>([\s\S]*?)<\/(?:[a-zA-Z0-9_-]+:)?calendar-data>/gi;
+      let match: RegExpExecArray | null;
+      let foundCount = 0;
+
+      while ((match = calendarDataRegex.exec(xmlText)) !== null) {
+        foundCount++;
+        const cleanIcs = cleanXmlCalendarData(match[1]);
+        const parsed = parseICS(cleanIcs);
+        items.push(...parsed);
+      }
+
+      if (foundCount > 0) {
+        reportSuccess = true;
+      }
+    }
+  } catch {
+    // 忽略异常继续降级
+  }
+
+  // 情况 3: REPORT 不可用或未匹配到数据，通过 PROPFIND Depth: 1 查找所有 .ics 资源
+  if (!reportSuccess) {
+    try {
+      const propfindXml = `<?xml version="1.0" encoding="utf-8" ?>
+<d:propfind xmlns:d="DAV:">
+    <d:prop>
+        <d:resourcetype />
+        <d:getcontenttype />
+    </d:prop>
+</d:propfind>`;
+
+      const propRes = await fetch(targetUrl, {
+        method: 'PROPFIND',
+        headers: {
+          ...headers,
+          'Depth': '1',
+          'Content-Type': 'application/xml; charset=utf-8'
+        },
+        body: propfindXml
+      });
+
+      if (propRes.status === 207 || propRes.status === 200) {
+        const xml = await propRes.text();
+        const hrefRegex = /<(?:[a-zA-Z0-9_-]+:)?href>([^<]+)<\/(?:[a-zA-Z0-9_-]+:)?href>/gi;
+        const hrefs: string[] = [];
+        let hMatch: RegExpExecArray | null;
+        while ((hMatch = hrefRegex.exec(xml)) !== null) {
+          const rawHref = hMatch[1].trim();
+          if (rawHref.endsWith('.ics')) {
+            hrefs.push(rawHref);
+          }
+        }
+
+        for (const itemHref of hrefs) {
+          try {
+            const fullItemUrl = new URL(itemHref, targetUrl).toString();
+            const getRes = await fetch(fullItemUrl, { headers });
+            if (getRes.ok) {
+              const icsText = await getRes.text();
+              const parsed = parseICS(icsText);
+              items.push(...parsed);
+            }
+          } catch {
+            // 忽略单个文件获取失败
+          }
+        }
+      }
+    } catch {
+      // 忽略 PROPFIND 异常
+    }
+  }
+
+  return items;
+}
+
+// 执行 CalDAV 同步并入库 (支持同时同步独立日历 URL 与待办 URL)
 export async function syncCalDAVForUser(userId: number): Promise<CalDAVSyncResult> {
   const settings = db.prepare('SELECT * FROM user_settings WHERE user_id = ?').get(userId) as any;
-  if (!settings || !settings.caldav_url) {
+  if (!settings || (!settings.caldav_url && !settings.caldav_todo_url)) {
     return { success: false, count: 0, message: '尚未配置 CalDAV 服务器 URL' };
   }
 
-  const urlStr = settings.caldav_url.trim();
+  const calUrl = (settings.caldav_url || '').trim();
+  const todoUrl = (settings.caldav_todo_url || '').trim();
   const username = settings.caldav_user || '';
   const password = settings.caldav_password || '';
   const calendarColor = settings.calendar_color || '#3b82f6';
@@ -286,125 +407,31 @@ export async function syncCalDAVForUser(userId: number): Promise<CalDAVSyncResul
     headers['Authorization'] = `Basic ${basic}`;
   }
 
-  let allParsedItems: ParsedItem[] = [];
+  const allParsedItems: ParsedItem[] = [];
 
-  // 情况 1: 如果 URL 直接以 .ics 结尾，直接 GET 单文件
-  if (urlStr.toLowerCase().endsWith('.ics')) {
-    try {
-      const res = await fetch(urlStr, { headers });
-      if (!res.ok) {
-        return { success: false, count: 0, message: `获取 ICS 文件失败 (HTTP ${res.status})` };
-      }
-      const icsText = await res.text();
-      allParsedItems = parseICS(icsText);
-    } catch (err: any) {
-      return { success: false, count: 0, message: `请求 ICS 失败: ${err.message}` };
-    }
-  } else {
-    // 情况 2: 标准 CalDAV 集合 URL，发送 REPORT 请求
-    const targetUrl = urlStr.endsWith('/') ? urlStr : `${urlStr}/`;
-    const reportXml = `<?xml version="1.0" encoding="utf-8" ?>
-<c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
-    <d:prop>
-        <d:getetag />
-        <c:calendar-data />
-    </d:prop>
-    <c:filter>
-        <c:comp-filter name="VCALENDAR" />
-    </c:filter>
-</c:calendar-query>`;
-
-    let reportSuccess = false;
-    try {
-      const reportRes = await fetch(targetUrl, {
-        method: 'REPORT',
-        headers: {
-          ...headers,
-          'Depth': '1',
-          'Content-Type': 'application/xml; charset=utf-8'
-        },
-        body: reportXml
-      });
-
-      if (reportRes.status === 207 || reportRes.status === 200) {
-        const xmlText = await reportRes.text();
-        // 匹配所有 <calendar-data> 内容
-        const calendarDataRegex = /<(?:[a-zA-Z0-9_-]+:)?calendar-data[^>]*>([\s\S]*?)<\/(?:[a-zA-Z0-9_-]+:)?calendar-data>/gi;
-        let match: RegExpExecArray | null;
-        let foundCount = 0;
-
-        while ((match = calendarDataRegex.exec(xmlText)) !== null) {
-          foundCount++;
-          const cleanIcs = cleanXmlCalendarData(match[1]);
-          const parsed = parseICS(cleanIcs);
-          allParsedItems.push(...parsed);
-        }
-
-        if (foundCount > 0) {
-          reportSuccess = true;
-        }
-      }
-    } catch (e) {
-      // REPORT 异常继续降级
-    }
-
-    // 情况 3: REPORT 不可用或未匹配到数据，通过 PROPFIND Depth: 1 查找所有 .ics 资源
-    if (!reportSuccess) {
-      try {
-        const propfindXml = `<?xml version="1.0" encoding="utf-8" ?>
-<d:propfind xmlns:d="DAV:">
-    <d:prop>
-        <d:resourcetype />
-        <d:getcontenttype />
-    </d:prop>
-</d:propfind>`;
-
-        const propRes = await fetch(targetUrl, {
-          method: 'PROPFIND',
-          headers: {
-            ...headers,
-            'Depth': '1',
-            'Content-Type': 'application/xml; charset=utf-8'
-          },
-          body: propfindXml
-        });
-
-        if (propRes.status === 207 || propRes.status === 200) {
-          const xml = await propRes.text();
-          const hrefRegex = /<(?:[a-zA-Z0-9_-]+:)?href>([^<]+)<\/(?:[a-zA-Z0-9_-]+:)?href>/gi;
-          const hrefs: string[] = [];
-          let hMatch: RegExpExecArray | null;
-          while ((hMatch = hrefRegex.exec(xml)) !== null) {
-            const rawHref = hMatch[1].trim();
-            if (rawHref.endsWith('.ics')) {
-              hrefs.push(rawHref);
-            }
-          }
-
-          // 逐个拉取 .ics 资源
-          for (const itemHref of hrefs) {
-            try {
-              const fullItemUrl = new URL(itemHref, targetUrl).toString();
-              const getRes = await fetch(fullItemUrl, { headers });
-              if (getRes.ok) {
-                const icsText = await getRes.text();
-                const parsed = parseICS(icsText);
-                allParsedItems.push(...parsed);
-              }
-            } catch {
-              // 忽略单个文件的获取错误
-            }
-          }
-        }
-      } catch (err: any) {
-        return { success: false, count: 0, message: `CalDAV 同步失败: ${err.message}` };
-      }
+  // 1. 同步日历集合
+  if (calUrl) {
+    const calItems = await fetchItemsFromUrl(calUrl, headers);
+    // 如果同时配置了专门的待办 URL，则日历集合中过滤保留 event；若未配待办 URL 则保留全部
+    if (todoUrl) {
+      allParsedItems.push(...calItems.filter(i => i.type === 'event'));
+    } else {
+      allParsedItems.push(...calItems);
     }
   }
 
-  // 入库写入 SQLite
+  // 2. 同步待办集合
+  if (todoUrl) {
+    const todoItems = await fetchItemsFromUrl(todoUrl, headers);
+    // 从待办集合中拉取，若未标记为 todo 则强制标记为 todo
+    for (const item of todoItems) {
+      item.type = 'todo';
+      allParsedItems.push(item);
+    }
+  }
+
   if (allParsedItems.length === 0) {
-    return { success: true, count: 0, message: 'CalDAV 连接正常，当前日历集合中暂无事件或待办' };
+    return { success: true, count: 0, message: 'CalDAV 连接正常，日历与待办集合中暂无事项' };
   }
 
   const insertOrUpdate = db.prepare(`

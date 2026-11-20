@@ -24,6 +24,7 @@ db.exec(`
     location_code TEXT DEFAULT 'Shanghai',
     weather_provider TEXT DEFAULT 'open-meteo',
     caldav_url TEXT DEFAULT '',
+    caldav_todo_url TEXT DEFAULT '',
     caldav_user TEXT DEFAULT '',
     caldav_password TEXT DEFAULT '',
     calendar_color TEXT DEFAULT '#3b82f6',
@@ -49,3 +50,14 @@ db.exec(`
     FOREIGN KEY(user_id) REFERENCES users(id)
   );
 `);
+
+// 平滑迁移旧数据库表字段
+try {
+  const columns = db.prepare("PRAGMA table_info(user_settings)").all() as any[];
+  const hasTodoUrl = columns.some((c: any) => c.name === 'caldav_todo_url');
+  if (!hasTodoUrl) {
+    db.exec("ALTER TABLE user_settings ADD COLUMN caldav_todo_url TEXT DEFAULT ''");
+  }
+} catch (e) {
+  // 忽略已存在或初次创建错误
+}

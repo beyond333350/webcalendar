@@ -22,6 +22,7 @@ export interface UserSettings {
   location_code: string;
   weather_provider: string;
   caldav_url: string;
+  caldav_todo_url?: string;
   caldav_user: string;
   caldav_password?: string;
   calendar_color: string;
