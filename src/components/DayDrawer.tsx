@@ -2,12 +2,6 @@ import React from 'react';
 import { CalendarEvent } from '../types';
 import { format, parseISO } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
-import { X, Plus, CheckCircle2, Circle, Clock, Trash2, Edit3, Calendar } from 'lucide-react';
-
-import React from 'react';
-import { CalendarEvent } from '../types';
-import { format, parseISO } from 'date-fns';
-import { zhCN } from 'date-fns/locale';
 import { X, Plus, CheckCircle2, Circle, Clock, Trash2, Edit3, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface DayDrawerProps {
