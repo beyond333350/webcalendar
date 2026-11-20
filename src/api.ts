@@ -74,8 +74,9 @@ export const api = {
   },
 
   // 事件与待办
-  async getEvents(): Promise<CalendarEvent[]> {
-    const res = await fetch(`${API_BASE}/events`, {
+  async getEvents(sync?: boolean): Promise<CalendarEvent[]> {
+    const url = sync ? `${API_BASE}/events?sync=1` : `${API_BASE}/events`;
+    const res = await fetch(url, {
       headers: getHeaders()
     });
     if (!res.ok) throw new Error('获取事件失败');
@@ -136,7 +137,17 @@ export const api = {
       headers: getHeaders(),
       body: JSON.stringify({ url, username, password })
     });
-    return res.json();
+    const data = await res.json().catch(() => ({ success: false, message: '响应解析失败' }));
+    return data;
+  },
+
+  async syncCalDAV(): Promise<{ success: boolean; count: number; message: string }> {
+    const res = await fetch(`${API_BASE}/settings/caldav-sync`, {
+      method: 'POST',
+      headers: getHeaders()
+    });
+    const data = await res.json().catch(() => ({ success: false, count: 0, message: '同步请求异常' }));
+    return data;
   },
 
   // 天气查询

@@ -52,7 +52,7 @@ export const App: React.FC = () => {
           // 容错处理
         }
       }
-      loadEvents();
+      loadEvents(true);
     };
     initApp();
   }, []);
@@ -95,11 +95,11 @@ export const App: React.FC = () => {
     };
   }, [isDragging]);
 
-  // 静默异步刷新（只刷新日历和待办数据，不刷新整页）
+  // 静默异步刷新（只刷新日历和待办数据，不刷新整页，若配置了 CalDAV 同时同步最新数据）
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
-      const data = await api.getEvents();
+      const data = await api.getEvents(true);
       setEvents(data);
     } catch (err) {
       console.error('刷新日程待办失败:', err);
@@ -108,9 +108,9 @@ export const App: React.FC = () => {
     }
   };
 
-  const loadEvents = async () => {
+  const loadEvents = async (sync: boolean = false) => {
     try {
-      const data = await api.getEvents();
+      const data = await api.getEvents(sync);
       setEvents(data);
     } catch {
       // 若后端尚未就绪或未授权，载入初始演示数据
@@ -308,13 +308,14 @@ export const App: React.FC = () => {
         username={username}
         onAuthSuccess={user => {
           setUsername(user);
-          loadEvents();
+          loadEvents(true);
         }}
         onLogout={() => {
           clearToken();
           setUsername(null);
           loadEvents();
         }}
+        onSyncSuccess={() => loadEvents(false)}
       />
     </div>
   );

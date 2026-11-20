@@ -4,6 +4,7 @@ import path from 'path';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { db } from './db.js';
+import { testCalDAVConnection, syncCalDAVForUser } from './caldav.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -97,18 +98,27 @@ app.put('/api/settings', authenticateToken, (req: any, res: any) => {
   res.json({ success: true });
 });
 
-// CalDAV 连接测试占位接口
+// CalDAV 真实连接测试接口
 app.post('/api/settings/caldav-test', authenticateToken, async (req: any, res: any) => {
   const { url, username, password } = req.body;
   if (!url) {
     return res.status(400).json({ success: false, message: 'CalDAV 服务器 URL 不能为空' });
   }
   try {
-    // 基础有效性验证
-    new URL(url);
-    res.json({ success: true, message: 'CalDAV 服务连接格式校验成功，Radicale 兼容就绪' });
+    const result = await testCalDAVConnection(url, username, password);
+    res.status(result.success ? 200 : 400).json(result);
   } catch (e: any) {
-    res.status(400).json({ success: false, message: '无效的 CalDAV 服务器地址格式' });
+    res.status(500).json({ success: false, message: `连接测试异常: ${e.message}` });
+  }
+});
+
+// CalDAV 真实同步拉取接口
+app.post('/api/settings/caldav-sync', authenticateToken, async (req: any, res: any) => {
+  try {
+    const result = await syncCalDAVForUser(req.user.id);
+    res.json(result);
+  } catch (e: any) {
+    res.status(500).json({ success: false, count: 0, message: `同步异常: ${e.message}` });
   }
 });
 

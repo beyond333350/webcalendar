@@ -9,6 +9,7 @@ interface SettingsModalProps {
   username: string | null;
   onAuthSuccess: (username: string) => void;
   onLogout: () => void;
+  onSyncSuccess?: () => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -16,7 +17,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onClose,
   username,
   onAuthSuccess,
-  onLogout
+  onLogout,
+  onSyncSuccess
 }) => {
   const [activeTab, setActiveTab] = useState<'profile' | 'caldav' | 'weather'>('profile');
 
@@ -42,7 +44,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     todo_color: '#f43f5e'
   });
   const [caldavTestMsg, setCaldavTestMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const [caldavSyncMsg, setCaldavSyncMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const [isTestingCaldav, setIsTestingCaldav] = useState(false);
+  const [isSyncingCaldav, setIsSyncingCaldav] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
   useEffect(() => {
@@ -88,6 +92,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       await api.updateSettings(settings);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2000);
+
+      // 如果填写了 CalDAV URL，保存后自动执行同步
+      if (settings.caldav_url) {
+        setIsSyncingCaldav(true);
+        setCaldavSyncMsg(null);
+        try {
+          const syncRes = await api.syncCalDAV();
+          setCaldavSyncMsg({
+            text: syncRes.message || (syncRes.success ? `同步完成，共获取 ${syncRes.count} 项` : '同步失败'),
+            type: syncRes.success ? 'success' : 'error'
+          });
+          if (syncRes.success && onSyncSuccess) {
+            onSyncSuccess();
+          }
+        } catch (e: any) {
+          setCaldavSyncMsg({ text: `自动同步异常: ${e.message}`, type: 'error' });
+        } finally {
+          setIsSyncingCaldav(false);
+        }
+      }
     } catch (err) {
       alert('保存设置失败');
     }
@@ -107,6 +131,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setCaldavTestMsg({ text: '连接测试失败', type: 'error' });
     } finally {
       setIsTestingCaldav(false);
+    }
+  };
+
+  const handleSyncCaldav = async () => {
+    if (!settings.caldav_url) {
+      setCaldavSyncMsg({ text: '请先配置并保存 CalDAV 服务器 URL', type: 'error' });
+      return;
+    }
+    setIsSyncingCaldav(true);
+    setCaldavSyncMsg(null);
+    try {
+      // 先保存最新配置确保凭证一致
+      await api.updateSettings(settings);
+      const res = await api.syncCalDAV();
+      setCaldavSyncMsg({ text: res.message, type: res.success ? 'success' : 'error' });
+      if (res.success && onSyncSuccess) {
+        onSyncSuccess();
+      }
+    } catch (err: any) {
+      setCaldavSyncMsg({ text: `同步失败: ${err.message}`, type: 'error' });
+    } finally {
+      setIsSyncingCaldav(false);
     }
   };
 
@@ -326,27 +372,71 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </div>
               </div>
 
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <div>
+                  <label className="block text-[11px] text-zinc-400 mb-1">日历日程默认颜色</label>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="color"
+                      value={settings.calendar_color || '#3b82f6'}
+                      onChange={e => setSettings({ ...settings, calendar_color: e.target.value })}
+                      className="w-7 h-7 rounded border border-zinc-700 bg-transparent cursor-pointer p-0.5"
+                    />
+                    <span className="text-xs text-zinc-300 font-mono">{settings.calendar_color || '#3b82f6'}</span>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[11px] text-zinc-400 mb-1">待办任务默认颜色</label>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="color"
+                      value={settings.todo_color || '#f43f5e'}
+                      onChange={e => setSettings({ ...settings, todo_color: e.target.value })}
+                      className="w-7 h-7 rounded border border-zinc-700 bg-transparent cursor-pointer p-0.5"
+                    />
+                    <span className="text-xs text-zinc-300 font-mono">{settings.todo_color || '#f43f5e'}</span>
+                  </div>
+                </div>
+              </div>
+
               {caldavTestMsg && (
                 <div className={`p-2 rounded text-xs ${caldavTestMsg.type === 'success' ? 'bg-emerald-950/40 text-emerald-400 border border-emerald-800/40' : 'bg-rose-950/40 text-rose-400 border border-rose-800/40'}`}>
                   {caldavTestMsg.text}
                 </div>
               )}
 
-              <div className="flex items-center space-x-2 pt-1">
+              {caldavSyncMsg && (
+                <div className={`p-2 rounded text-xs flex items-center space-x-1.5 ${caldavSyncMsg.type === 'success' ? 'bg-blue-950/40 text-blue-300 border border-blue-800/40' : 'bg-rose-950/40 text-rose-400 border border-rose-800/40'}`}>
+                  {caldavSyncMsg.type === 'success' ? <Check className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" /> : <AlertCircle className="w-3.5 h-3.5 text-rose-400 flex-shrink-0" />}
+                  <span>{caldavSyncMsg.text}</span>
+                </div>
+              )}
+
+              <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-zinc-800/80">
                 <button
                   type="button"
                   onClick={handleTestCaldav}
                   disabled={isTestingCaldav}
                   className="px-3 py-1.5 text-xs rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 transition"
                 >
-                  {isTestingCaldav ? '正在测试...' : '测试 CalDAV 连接'}
+                  {isTestingCaldav ? '正在测试...' : '测试连接'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSyncCaldav}
+                  disabled={isSyncingCaldav}
+                  className="px-3 py-1.5 text-xs rounded bg-emerald-700/80 hover:bg-emerald-600 text-white font-medium flex items-center space-x-1 transition disabled:opacity-50"
+                  title="立即从 Radicale CalDAV 同步最新日历和待办"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncingCaldav ? 'animate-spin' : ''}`} />
+                  <span>{isSyncingCaldav ? '正在同步...' : '立即同步日历'}</span>
                 </button>
                 <button
                   type="button"
                   onClick={handleSaveSettings}
                   className="px-4 py-1.5 text-xs rounded bg-blue-600 hover:bg-blue-500 text-white font-medium transition"
                 >
-                  保存配置
+                  保存配置并同步
                 </button>
                 {saveSuccess && <span className="text-xs text-emerald-400 flex items-center space-x-1"><Check className="w-3.5 h-3.5" /><span>已保存</span></span>}
               </div>
