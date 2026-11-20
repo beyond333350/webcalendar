@@ -4,7 +4,7 @@ import path from 'path';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { db } from './db.js';
-import { testCalDAVConnection, syncCalDAVForUser } from './caldav.js';
+import { testCalDAVConnection, syncCalDAVForUser, pushEventToCalDAV, deleteEventFromCalDAV } from './caldav.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -181,15 +181,24 @@ app.get('/api/weather', async (req, res) => {
   }
 });
 
-// 事件与待办接口
-app.get('/api/events', authenticateToken, (req: any, res: any) => {
+// 事件与待办接口 (支持 ?sync=1 主动触发 CalDAV 服务端双向同步)
+app.get('/api/events', authenticateToken, async (req: any, res: any) => {
+  if (req.query.sync === '1') {
+    try {
+      await syncCalDAVForUser(req.user.id);
+    } catch (e: any) {
+      console.error('CalDAV sync on get error:', e);
+    }
+  }
   const events = db.prepare('SELECT * FROM events WHERE user_id = ? ORDER BY start_date ASC, start_time ASC').all(req.user.id);
   res.json(events);
 });
 
-app.post('/api/events', authenticateToken, (req: any, res: any) => {
+app.post('/api/events', authenticateToken, async (req: any, res: any) => {
   const { id, title, description, type, start_date, end_date, start_time, end_time, color, category } = req.body;
   const eventId = id || `evt_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+  const finalColor = color || (type === 'todo' ? '#3b82f6' : '#ef4444');
+
   db.prepare(`
     INSERT INTO events (id, user_id, title, description, type, start_date, end_date, start_time, end_time, color, category)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -203,13 +212,28 @@ app.post('/api/events', authenticateToken, (req: any, res: any) => {
     end_date || start_date,
     start_time || '',
     end_time || '',
-    color || (type === 'todo' ? '#3b82f6' : '#ef4444'),
+    finalColor,
     category || '默认'
   );
+
+  // 反向推送到 Radicale CalDAV 服务器
+  pushEventToCalDAV(req.user.id, {
+    id: eventId,
+    title,
+    description,
+    type: type || 'event',
+    start_date,
+    end_date: end_date || start_date,
+    start_time: start_time || '',
+    end_time: end_time || '',
+    is_completed: 0,
+    category: category || '默认'
+  }).catch(e => console.error('Push to CalDAV error:', e));
+
   res.json({ id: eventId, success: true });
 });
 
-app.put('/api/events/:id', authenticateToken, (req: any, res: any) => {
+app.put('/api/events/:id', authenticateToken, async (req: any, res: any) => {
   const { title, description, type, start_date, end_date, start_time, end_time, is_completed, color, category } = req.body;
   db.prepare(`
     UPDATE events SET
@@ -231,11 +255,34 @@ app.put('/api/events/:id', authenticateToken, (req: any, res: any) => {
     req.params.id,
     req.user.id
   );
+
+  // 反向推送到 Radicale CalDAV 服务器 (支持待办完成状态同步、标题描述修改等)
+  pushEventToCalDAV(req.user.id, {
+    id: req.params.id,
+    title,
+    description,
+    type,
+    start_date,
+    end_date: end_date || start_date,
+    start_time: start_time || '',
+    end_time: end_time || '',
+    is_completed: is_completed ? 1 : 0,
+    category: category || '默认'
+  }).catch(e => console.error('Push update to CalDAV error:', e));
+
   res.json({ success: true });
 });
 
-app.delete('/api/events/:id', authenticateToken, (req: any, res: any) => {
+app.delete('/api/events/:id', authenticateToken, async (req: any, res: any) => {
+  const existing = db.prepare('SELECT type FROM events WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id) as any;
   db.prepare('DELETE FROM events WHERE id = ? AND user_id = ?').run(req.params.id, req.user.id);
+
+  if (existing) {
+    deleteEventFromCalDAV(req.user.id, req.params.id, existing.type).catch(e =>
+      console.error('Delete from CalDAV error:', e)
+    );
+  }
+
   res.json({ success: true });
 });
 

@@ -173,6 +173,16 @@ export function parseICS(icsText: string): ParsedItem[] {
           endDate = startDate;
         }
 
+        // 核心修复：全天事件的 DTEND 是排他的（Exclusive，即不包含当天）
+        // 例如 DTSTART: 20261123, DTEND: 20261124 代表仅在 11-23 这一天发生。
+        // 如果没有时间且 endDate > startDate，则将包含的最后一天的实际闭区间 end_date 减去 1 天
+        if (compType === 'event' && !startTime && !endTime && startDate && endDate && endDate > startDate) {
+          const endD = new Date(`${endDate}T00:00:00Z`);
+          endD.setUTCDate(endD.getUTCDate() - 1);
+          const pad = (n: number) => String(n).padStart(2, '0');
+          endDate = `${endD.getUTCFullYear()}-${pad(endD.getUTCMonth() + 1)}-${pad(endD.getUTCDate())}`;
+        }
+
         items.push({
           uid,
           type: compType,
@@ -539,4 +549,167 @@ export async function syncCalDAVForUser(userId: number): Promise<CalDAVSyncResul
     count,
     message: `成功同步 ${count} 条 Radicale 日历与待办事项`
   };
+}
+
+// 格式化日期为 iCalendar 格式 (YYYYMMDD 或 YYYYMMDDTHHmmss)
+function formatICalDate(dateStr: string, timeStr?: string): string {
+  const cleanDate = dateStr.replace(/-/g, '');
+  if (!timeStr) {
+    return cleanDate;
+  }
+  const cleanTime = timeStr.replace(/:/g, '') + '00';
+  return `${cleanDate}T${cleanTime}`;
+}
+
+// 将单个日程或待办推送到 Radicale CalDAV 服务器
+export async function pushEventToCalDAV(userId: number, item: any): Promise<{ success: boolean; message?: string }> {
+  const settings = db.prepare('SELECT * FROM user_settings WHERE user_id = ?').get(userId) as any;
+  if (!settings) return { success: false, message: '未配置用户设置' };
+
+  const isTodo = item.type === 'todo';
+  const targetUrlStr = isTodo
+    ? (settings.caldav_todo_url || settings.caldav_url || '').trim()
+    : (settings.caldav_url || '').trim();
+
+  if (!targetUrlStr) {
+    // 用户未配置对应 CalDAV 集合，仅保留本地修改
+    return { success: true, message: '未配置 CalDAV 集合 URL，仅本地保存' };
+  }
+
+  const username = settings.caldav_user || '';
+  const password = settings.caldav_password || '';
+  const headers: Record<string, string> = {
+    'User-Agent': 'WebCalendar/1.0',
+    'Content-Type': 'text/calendar; charset=utf-8'
+  };
+  if (username && password) {
+    const basic = Buffer.from(`${username}:${password}`).toString('base64');
+    headers['Authorization'] = `Basic ${basic}`;
+  }
+
+  // 确定 UID 与资源文件名
+  const rawUid = item.id.startsWith('cal_') ? item.id.slice(4) : item.id;
+  const baseUrl = targetUrlStr.endsWith('/') ? targetUrlStr : `${targetUrlStr}/`;
+  const fileUrl = `${baseUrl}${encodeURIComponent(rawUid)}.ics`;
+
+  const dtStamp = new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+  const isCompleted = item.is_completed === 1 || item.is_completed === true;
+
+  let icsContent = '';
+  if (isTodo) {
+    const dueFormatted = formatICalDate(item.end_date || item.start_date, item.end_time || item.start_time);
+    const hasTime = Boolean(item.end_time || item.start_time);
+    const dueProp = hasTime ? `DUE:${dueFormatted}` : `DUE;VALUE=DATE:${dueFormatted}`;
+    const dtstartProp = item.start_date ? (hasTime ? `DTSTART:${formatICalDate(item.start_date, item.start_time)}` : `DTSTART;VALUE=DATE:${formatICalDate(item.start_date)}`) : '';
+
+    icsContent = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//WebCalendar//CN',
+      'BEGIN:VTODO',
+      `UID:${rawUid}`,
+      `DTSTAMP:${dtStamp}`,
+      `SUMMARY:${item.title.replace(/[\r\n]+/g, ' ')}`,
+      item.description ? `DESCRIPTION:${item.description.replace(/[\r\n]+/g, '\\n')}` : '',
+      dtstartProp,
+      dueProp,
+      isCompleted ? 'STATUS:COMPLETED' : 'STATUS:NEEDS-ACTION',
+      isCompleted ? `COMPLETED:${dtStamp}` : '',
+      isCompleted ? 'PERCENT-COMPLETE:100' : 'PERCENT-COMPLETE:0',
+      item.category && item.category !== '默认' ? `CATEGORIES:${item.category}` : '',
+      'END:VTODO',
+      'END:VCALENDAR'
+    ].filter(Boolean).join('\r\n') + '\r\n';
+  } else {
+    // 全天事件对于 DTEND 应该加 1 天 (RFC 5545 排他规则)
+    const hasTime = Boolean(item.start_time);
+    let dtstartProp = '';
+    let dtendProp = '';
+
+    if (hasTime) {
+      dtstartProp = `DTSTART:${formatICalDate(item.start_date, item.start_time)}`;
+      const endDate = item.end_date || item.start_date;
+      const endTime = item.end_time || item.start_time;
+      dtendProp = `DTEND:${formatICalDate(endDate, endTime)}`;
+    } else {
+      dtstartProp = `DTSTART;VALUE=DATE:${formatICalDate(item.start_date)}`;
+      const endD = new Date(`${item.end_date || item.start_date}T00:00:00Z`);
+      endD.setUTCDate(endD.getUTCDate() + 1);
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const exclusiveEndDate = `${endD.getUTCFullYear()}${pad(endD.getUTCMonth() + 1)}${pad(endD.getUTCDate())}`;
+      dtendProp = `DTEND;VALUE=DATE:${exclusiveEndDate}`;
+    }
+
+    icsContent = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//WebCalendar//CN',
+      'BEGIN:VEVENT',
+      `UID:${rawUid}`,
+      `DTSTAMP:${dtStamp}`,
+      `SUMMARY:${item.title.replace(/[\r\n]+/g, ' ')}`,
+      item.description ? `DESCRIPTION:${item.description.replace(/[\r\n]+/g, '\\n')}` : '',
+      dtstartProp,
+      dtendProp,
+      item.category && item.category !== '默认' ? `CATEGORIES:${item.category}` : '',
+      'END:VEVENT',
+      'END:VCALENDAR'
+    ].filter(Boolean).join('\r\n') + '\r\n';
+  }
+
+  try {
+    const putRes = await fetch(fileUrl, {
+      method: 'PUT',
+      headers,
+      body: icsContent
+    });
+    if (putRes.status >= 200 && putRes.status < 300) {
+      return { success: true };
+    }
+    return { success: false, message: `CalDAV 服务器响应: HTTP ${putRes.status}` };
+  } catch (err: any) {
+    return { success: false, message: `推送至 CalDAV 异常: ${err.message}` };
+  }
+}
+
+// 从 Radicale CalDAV 服务器删除指定事项
+export async function deleteEventFromCalDAV(userId: number, eventId: string, type: string): Promise<{ success: boolean; message?: string }> {
+  const settings = db.prepare('SELECT * FROM user_settings WHERE user_id = ?').get(userId) as any;
+  if (!settings) return { success: false, message: '未配置用户设置' };
+
+  const isTodo = type === 'todo';
+  const targetUrlStr = isTodo
+    ? (settings.caldav_todo_url || settings.caldav_url || '').trim()
+    : (settings.caldav_url || '').trim();
+
+  if (!targetUrlStr) {
+    return { success: true };
+  }
+
+  const username = settings.caldav_user || '';
+  const password = settings.caldav_password || '';
+  const headers: Record<string, string> = {
+    'User-Agent': 'WebCalendar/1.0'
+  };
+  if (username && password) {
+    const basic = Buffer.from(`${username}:${password}`).toString('base64');
+    headers['Authorization'] = `Basic ${basic}`;
+  }
+
+  const rawUid = eventId.startsWith('cal_') ? eventId.slice(4) : eventId;
+  const baseUrl = targetUrlStr.endsWith('/') ? targetUrlStr : `${targetUrlStr}/`;
+  const fileUrl = `${baseUrl}${encodeURIComponent(rawUid)}.ics`;
+
+  try {
+    const delRes = await fetch(fileUrl, {
+      method: 'DELETE',
+      headers
+    });
+    if (delRes.status >= 200 && delRes.status < 300 || delRes.status === 404) {
+      return { success: true };
+    }
+    return { success: false, message: `CalDAV 删除返回状态: HTTP ${delRes.status}` };
+  } catch (err: any) {
+    return { success: false, message: `CalDAV 删除异常: ${err.message}` };
+  }
 }

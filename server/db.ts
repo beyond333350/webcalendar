@@ -51,13 +51,32 @@ db.exec(`
   );
 `);
 
-// 平滑迁移旧数据库表字段
+// 平滑迁移旧数据库表字段与纠正历史默认颜色
 try {
   const columns = db.prepare("PRAGMA table_info(user_settings)").all() as any[];
   const hasTodoUrl = columns.some((c: any) => c.name === 'caldav_todo_url');
   if (!hasTodoUrl) {
     db.exec("ALTER TABLE user_settings ADD COLUMN caldav_todo_url TEXT DEFAULT ''");
   }
+
+  // 修正历史默认颜色：日历为红色 #ef4444，待办为蓝色 #3b82f6
+  db.exec(`
+    UPDATE user_settings
+    SET calendar_color = '#ef4444'
+    WHERE calendar_color = '#3b82f6' OR calendar_color = '#f43f5e';
+
+    UPDATE user_settings
+    SET todo_color = '#3b82f6'
+    WHERE todo_color = '#f43f5e' OR todo_color = '#ef4444';
+
+    UPDATE events
+    SET color = '#ef4444'
+    WHERE type = 'event' AND (color = '#3b82f6' OR color = '#f43f5e');
+
+    UPDATE events
+    SET color = '#3b82f6'
+    WHERE type = 'todo' AND (color = '#f43f5e' OR color = '#ef4444');
+  `);
 } catch (e) {
   // 忽略已存在或初次创建错误
 }

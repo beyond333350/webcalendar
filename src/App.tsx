@@ -19,8 +19,14 @@ export const App: React.FC = () => {
   // 右侧抽屉默认折叠不显示
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
-  // 顶部刷新状态
+  // 顶部刷新状态与 Toast 提示
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
 
   // 左侧栏折叠状态 (支持保存到 localStorage，默认展开)
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState<boolean>(() => {
@@ -116,8 +122,10 @@ export const App: React.FC = () => {
     try {
       const data = await api.getEvents(true);
       setEvents(data);
-    } catch (err) {
+      showToast(`已刷新日历与待办，共 ${data.length} 项事项`);
+    } catch (err: any) {
       console.error('刷新日程待办失败:', err);
+      showToast('刷新完成（部分数据使用本地缓存）');
     } finally {
       setIsRefreshing(false);
     }
@@ -347,6 +355,14 @@ export const App: React.FC = () => {
         }}
         onSyncSuccess={() => loadEvents(false)}
       />
+
+      {/* 轻量刷新与操作 Toast 提示 */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 bg-[#222225] border border-blue-500/40 text-blue-300 px-4 py-2 rounded-lg shadow-xl text-xs flex items-center space-x-2 animate-in fade-in slide-in-from-bottom-2 duration-150">
+          <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
     </div>
   );
 };
