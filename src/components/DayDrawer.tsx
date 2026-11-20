@@ -2,7 +2,7 @@ import React from 'react';
 import { CalendarEvent } from '../types';
 import { format, parseISO } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
-import { X, Plus, CheckCircle2, Circle, Clock, Trash2, Edit3, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
+import { X, Plus, CheckCircle2, Circle, Clock, Trash2, Edit3, Calendar, ChevronLeft, ChevronRight, CheckSquare } from 'lucide-react';
 
 interface DayDrawerProps {
   isOpen: boolean;

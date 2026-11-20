@@ -41,10 +41,10 @@ export const MonthView: React.FC<MonthViewProps> = ({
   const getWeatherIcon = (date: Date) => {
     const day = date.getDate();
     const mod = day % 4;
-    if (mod === 0) return <Sun className="w-3.5 h-3.5 text-amber-400" title="晴" />;
-    if (mod === 1) return <Cloud className="w-3.5 h-3.5 text-zinc-400" title="多云" />;
-    if (mod === 2) return <CloudRain className="w-3.5 h-3.5 text-blue-400" title="小雨" />;
-    return <CloudSnow className="w-3.5 h-3.5 text-indigo-300" title="雪" />;
+    if (mod === 0) return <span title="晴"><Sun className="w-3.5 h-3.5 text-amber-400" /></span>;
+    if (mod === 1) return <span title="多云"><Cloud className="w-3.5 h-3.5 text-zinc-400" /></span>;
+    if (mod === 2) return <span title="小雨"><CloudRain className="w-3.5 h-3.5 text-blue-400" /></span>;
+    return <span title="雪"><CloudSnow className="w-3.5 h-3.5 text-indigo-300" /></span>;
   };
 
   return (
