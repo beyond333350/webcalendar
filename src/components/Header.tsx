@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronLeft, ChevronRight, Plus, Calendar as CalendarIcon, Settings, User } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Calendar as CalendarIcon, Settings, User, RefreshCw } from 'lucide-react';
 import { format } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 
@@ -10,6 +10,8 @@ interface HeaderProps {
   onToday: () => void;
   onOpenCreateModal: () => void;
   onOpenSettingsModal: () => void;
+  onRefresh: () => void;
+  isRefreshing: boolean;
   username: string | null;
 }
 
@@ -20,6 +22,8 @@ export const Header: React.FC<HeaderProps> = ({
   onToday,
   onOpenCreateModal,
   onOpenSettingsModal,
+  onRefresh,
+  isRefreshing,
   username
 }) => {
   return (
@@ -64,8 +68,18 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
 
-      {/* 右侧：新建按钮 & 用户设置 */}
-      <div className="flex items-center space-x-3">
+      {/* 右侧：刷新按钮、新建按钮 & 用户设置 */}
+      <div className="flex items-center space-x-2.5">
+        <button
+          onClick={onRefresh}
+          disabled={isRefreshing}
+          title="刷新日历与待办数据 (支持每5分钟自动静默刷新)"
+          className="flex items-center space-x-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 transition disabled:opacity-60"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-blue-400' : 'text-zinc-400'}`} />
+          <span className="hidden sm:inline">刷新</span>
+        </button>
+
         <button
           onClick={onOpenCreateModal}
           className="flex items-center space-x-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-blue-600 hover:bg-blue-500 text-white shadow-sm shadow-blue-500/20 transition"

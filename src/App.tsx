@@ -15,6 +15,23 @@ export const App: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState<string | null>(format(new Date(), 'yyyy-MM-dd'));
   const [username, setUsername] = useState<string | null>(localStorage.getItem('webcalendar_username'));
 
+  // 右侧抽屉默认折叠不显示
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+
+  // 顶部刷新状态
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // 左侧面板可调节宽度 (限制 220px ~ 500px, 默认 300px)
+  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
+    const saved = localStorage.getItem('webcalendar_sidebar_width');
+    if (saved) {
+      const parsed = parseInt(saved, 10);
+      if (!isNaN(parsed)) return Math.max(220, Math.min(500, parsed));
+    }
+    return 300;
+  });
+  const [isDragging, setIsDragging] = useState(false);
+
   // 模态框状态
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
@@ -39,6 +56,57 @@ export const App: React.FC = () => {
     };
     initApp();
   }, []);
+
+  // 每 5 分钟自动静默刷新日历与待办数据
+  useEffect(() => {
+    const FIVE_MINUTES = 5 * 60 * 1000;
+    const timer = setInterval(() => {
+      handleRefresh();
+    }, FIVE_MINUTES);
+    return () => clearInterval(timer);
+  }, []);
+
+  // 左右区域拖拽宽度监听
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const newWidth = Math.max(220, Math.min(500, e.clientX));
+      setSidebarWidth(newWidth);
+    };
+
+    const handleMouseUp = (e: MouseEvent) => {
+      setIsDragging(false);
+      const finalWidth = Math.max(220, Math.min(500, e.clientX));
+      setSidebarWidth(finalWidth);
+      localStorage.setItem('webcalendar_sidebar_width', String(finalWidth));
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [isDragging]);
+
+  // 静默异步刷新（只刷新日历和待办数据，不刷新整页）
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      const data = await api.getEvents();
+      setEvents(data);
+    } catch (err) {
+      console.error('刷新日程待办失败:', err);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   const loadEvents = async () => {
     try {
@@ -72,6 +140,20 @@ export const App: React.FC = () => {
         }
       ]);
     }
+  };
+
+  // 点击某天打开右侧抽屉
+  const handleSelectDate = (dateStr: string) => {
+    setSelectedDate(dateStr);
+    setIsDrawerOpen(true);
+  };
+
+  // 手动点击小箭头切换抽屉展开/折叠
+  const handleToggleDrawer = () => {
+    if (!isDrawerOpen && !selectedDate) {
+      setSelectedDate(format(new Date(), 'yyyy-MM-dd'));
+    }
+    setIsDrawerOpen(prev => !prev);
   };
 
   // 待办完成状态切换
@@ -158,33 +240,52 @@ export const App: React.FC = () => {
         }}
         onOpenCreateModal={() => handleOpenCreate()}
         onOpenSettingsModal={() => setIsSettingsModalOpen(true)}
+        onRefresh={handleRefresh}
+        isRefreshing={isRefreshing}
         username={username}
       />
 
       {/* 主体三栏布局 */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* 左侧栏：近 3 天待办日程 */}
+      <div className="flex flex-1 overflow-hidden relative">
+        {/* 左侧栏：近 3 天待办日程 (宽度支持拖拽调节) */}
         <SidebarRecentDays
           events={events}
+          width={sidebarWidth}
           onToggleTodo={handleToggleTodo}
-          onSelectDate={dateStr => setSelectedDate(dateStr)}
+          onSelectDate={handleSelectDate}
           onOpenCreateForDate={dateStr => handleOpenCreate(dateStr)}
         />
+
+        {/* 左侧与中间区域可拖拽分割条 */}
+        <div
+          onMouseDown={e => {
+            e.preventDefault();
+            setIsDragging(true);
+          }}
+          className={`w-1.5 cursor-col-resize z-10 transition-colors flex items-center justify-center select-none group border-x border-zinc-900/50 ${
+            isDragging ? 'bg-blue-500' : 'bg-[#222225] hover:bg-blue-500/70'
+          }`}
+          title="按住拖拽调节左右区域大小"
+        >
+          <div className="w-0.5 h-8 rounded-full bg-zinc-600 group-hover:bg-blue-300 opacity-40 group-hover:opacity-100 transition-opacity" />
+        </div>
 
         {/* 中间栏：月视图日历网格 */}
         <MonthView
           currentDate={currentDate}
           events={events}
           selectedDate={selectedDate}
-          onSelectDate={dateStr => setSelectedDate(dateStr)}
+          onSelectDate={handleSelectDate}
           onEditEvent={handleEditEvent}
         />
 
-        {/* 右侧抽屉：选中日期详情面板 */}
+        {/* 右侧抽屉：默认折叠，点击具体天数或小箭头展开 */}
         <DayDrawer
+          isOpen={isDrawerOpen}
           selectedDate={selectedDate}
           events={events}
-          onClose={() => setSelectedDate(null)}
+          onClose={() => setIsDrawerOpen(false)}
+          onToggleCollapse={handleToggleDrawer}
           onToggleTodo={handleToggleTodo}
           onEditEvent={handleEditEvent}
           onDeleteEvent={handleDeleteEvent}

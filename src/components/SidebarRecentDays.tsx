@@ -6,6 +6,7 @@ import { CheckCircle2, Circle, Clock, CheckSquare } from 'lucide-react';
 
 interface SidebarRecentDaysProps {
   events: CalendarEvent[];
+  width?: number;
   onToggleTodo: (event: CalendarEvent) => void;
   onSelectDate: (dateStr: string) => void;
   onOpenCreateForDate: (dateStr: string) => void;
@@ -13,6 +14,7 @@ interface SidebarRecentDaysProps {
 
 export const SidebarRecentDays: React.FC<SidebarRecentDaysProps> = ({
   events,
+  width,
   onToggleTodo,
   onSelectDate,
   onOpenCreateForDate
@@ -25,7 +27,10 @@ export const SidebarRecentDays: React.FC<SidebarRecentDaysProps> = ({
   ];
 
   return (
-    <aside className="w-80 border-r border-zinc-800 bg-[#18181b] flex flex-col h-full overflow-hidden select-none">
+    <aside
+      style={{ width: width ? `${width}px` : undefined }}
+      className="flex-shrink-0 border-r border-zinc-800 bg-[#18181b] flex flex-col h-full overflow-hidden select-none"
+    >
       <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
         <div className="flex items-center space-x-2">
           <CheckSquare className="w-4 h-4 text-rose-500" />
