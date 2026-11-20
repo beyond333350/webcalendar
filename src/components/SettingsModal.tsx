@@ -41,8 +41,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     caldav_todo_url: '',
     caldav_user: '',
     caldav_password: '',
-    calendar_color: '#3b82f6',
-    todo_color: '#f43f5e'
+    calendar_color: '#ef4444',
+    todo_color: '#3b82f6'
   });
   const [caldavTestMsg, setCaldavTestMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const [caldavSyncMsg, setCaldavSyncMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
@@ -401,11 +401,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <div className="flex items-center space-x-2">
                     <input
                       type="color"
-                      value={settings.calendar_color || '#3b82f6'}
+                      value={settings.calendar_color || '#ef4444'}
                       onChange={e => setSettings({ ...settings, calendar_color: e.target.value })}
                       className="w-7 h-7 rounded border border-zinc-700 bg-transparent cursor-pointer p-0.5"
                     />
-                    <span className="text-xs text-zinc-300 font-mono">{settings.calendar_color || '#3b82f6'}</span>
+                    <span className="text-xs text-zinc-300 font-mono">{settings.calendar_color || '#ef4444'}</span>
                   </div>
                 </div>
                 <div>
@@ -413,11 +413,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <div className="flex items-center space-x-2">
                     <input
                       type="color"
-                      value={settings.todo_color || '#f43f5e'}
+                      value={settings.todo_color || '#3b82f6'}
                       onChange={e => setSettings({ ...settings, todo_color: e.target.value })}
                       className="w-7 h-7 rounded border border-zinc-700 bg-transparent cursor-pointer p-0.5"
                     />
-                    <span className="text-xs text-zinc-300 font-mono">{settings.todo_color || '#f43f5e'}</span>
+                    <span className="text-xs text-zinc-300 font-mono">{settings.todo_color || '#3b82f6'}</span>
                   </div>
                 </div>
               </div>

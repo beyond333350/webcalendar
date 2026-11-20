@@ -101,8 +101,8 @@ app.put('/api/settings', authenticateToken, (req: any, res: any) => {
     caldav_todo_url || '',
     caldav_user || '',
     caldav_password || '',
-    calendar_color || '#3b82f6',
-    todo_color || '#f43f5e',
+    calendar_color || '#ef4444',
+    todo_color || '#3b82f6',
     req.user.id
   );
   res.json({ success: true });
@@ -203,7 +203,7 @@ app.post('/api/events', authenticateToken, (req: any, res: any) => {
     end_date || start_date,
     start_time || '',
     end_time || '',
-    color || (type === 'todo' ? '#f43f5e' : '#3b82f6'),
+    color || (type === 'todo' ? '#3b82f6' : '#ef4444'),
     category || '默认'
   );
   res.json({ id: eventId, success: true });

@@ -2,11 +2,13 @@ import React from 'react';
 import { CalendarEvent } from '../types';
 import { format, addDays } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
-import { CheckCircle2, Circle, Clock, CheckSquare } from 'lucide-react';
+import { CheckCircle2, Circle, Clock, CheckSquare, ChevronLeft } from 'lucide-react';
 
 interface SidebarRecentDaysProps {
   events: CalendarEvent[];
   width?: number;
+  isOpen?: boolean;
+  onToggleCollapse?: () => void;
   onToggleTodo: (event: CalendarEvent) => void;
   onSelectDate: (dateStr: string) => void;
   onOpenCreateForDate: (dateStr: string) => void;
@@ -15,6 +17,8 @@ interface SidebarRecentDaysProps {
 export const SidebarRecentDays: React.FC<SidebarRecentDaysProps> = ({
   events,
   width,
+  isOpen = true,
+  onToggleCollapse,
   onToggleTodo,
   onSelectDate,
   onOpenCreateForDate
@@ -28,17 +32,28 @@ export const SidebarRecentDays: React.FC<SidebarRecentDaysProps> = ({
 
   return (
     <aside
-      style={{ width: width ? `${width}px` : undefined }}
-      className="flex-shrink-0 border-r border-zinc-800 bg-[#18181b] flex flex-col h-full overflow-hidden select-none"
+      style={{ width: isOpen ? (width ? `${width}px` : '320px') : '0px' }}
+      className={`flex-shrink-0 bg-[#18181b] flex flex-col h-full overflow-hidden select-none transition-all duration-300 ease-in-out ${
+        isOpen ? 'border-r border-zinc-800 opacity-100' : 'border-r-0 opacity-0 pointer-events-none'
+      }`}
     >
-      <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
+      <div className="p-4 border-b border-zinc-800 flex items-center justify-between min-w-[280px]">
         <div className="flex items-center space-x-2">
-          <CheckSquare className="w-4 h-4 text-rose-500" />
+          <CheckSquare className="w-4 h-4 text-blue-500" />
           <h2 className="text-sm font-semibold text-zinc-100">近期 3 天日程待办</h2>
         </div>
+        {onToggleCollapse && (
+          <button
+            onClick={onToggleCollapse}
+            className="p-1 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 rounded-md transition"
+            title="收起左侧栏"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+        )}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-3 space-y-4">
+      <div className="flex-1 overflow-y-auto p-3 space-y-4 min-w-[280px]">
         {dayList.map(({ label, date }) => {
           const dateStr = format(date, 'yyyy-MM-dd');
           const dayEvents = events.filter(e => e.start_date === dateStr);
@@ -97,7 +112,7 @@ export const SidebarRecentDays: React.FC<SidebarRecentDaysProps> = ({
                         ) : (
                           <span
                             className="w-1.5 h-3.5 mt-0.5 rounded-full flex-shrink-0"
-                            style={{ backgroundColor: item.color || '#3b82f6' }}
+                            style={{ backgroundColor: item.color || '#ef4444' }}
                           />
                         )}
 

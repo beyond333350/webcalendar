@@ -122,7 +122,7 @@ export const DayDrawer: React.FC<DayDrawerProps> = ({
                       ) : (
                         <span
                           className="w-2 h-4 mt-0.5 rounded-full flex-shrink-0"
-                          style={{ backgroundColor: item.color || '#3b82f6' }}
+                          style={{ backgroundColor: item.color || '#ef4444' }}
                         />
                       )}
 

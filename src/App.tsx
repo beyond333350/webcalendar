@@ -8,6 +8,7 @@ import { DayDrawer } from './components/DayDrawer';
 import { EventModal } from './components/EventModal';
 import { SettingsModal } from './components/SettingsModal';
 import { addMonths, subMonths, format } from 'date-fns';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 export const App: React.FC = () => {
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
@@ -20,6 +21,20 @@ export const App: React.FC = () => {
 
   // 顶部刷新状态
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // 左侧栏折叠状态 (支持保存到 localStorage，默认展开)
+  const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState<boolean>(() => {
+    const saved = localStorage.getItem('webcalendar_left_sidebar_open');
+    return saved !== null ? saved === 'true' : true;
+  });
+
+  const handleToggleLeftSidebar = () => {
+    setIsLeftSidebarOpen(prev => {
+      const next = !prev;
+      localStorage.setItem('webcalendar_left_sidebar_open', String(next));
+      return next;
+    });
+  };
 
   // 左侧面板可调节宽度 (限制 220px ~ 500px, 默认 300px)
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
@@ -124,7 +139,7 @@ export const App: React.FC = () => {
           start_date: todayStr,
           start_time: '10:00',
           end_time: '11:30',
-          color: '#3b82f6',
+          color: '#ef4444',
           category: '工作'
         },
         {
@@ -135,7 +150,7 @@ export const App: React.FC = () => {
           start_date: todayStr,
           start_time: '14:00',
           is_completed: 0,
-          color: '#f43f5e',
+          color: '#3b82f6',
           category: '项目'
         }
       ]);
@@ -193,7 +208,7 @@ export const App: React.FC = () => {
           start_date: eventData.start_date || format(new Date(), 'yyyy-MM-dd'),
           start_time: eventData.start_time,
           end_time: eventData.end_time,
-          color: eventData.color || '#3b82f6',
+          color: eventData.color || (eventData.type === 'todo' ? '#3b82f6' : '#ef4444'),
           category: eventData.category || '默认',
           is_completed: 0
         };
@@ -247,28 +262,43 @@ export const App: React.FC = () => {
 
       {/* 主体三栏布局 */}
       <div className="flex flex-1 overflow-hidden relative">
-        {/* 左侧栏：近 3 天待办日程 (宽度支持拖拽调节) */}
-        <SidebarRecentDays
-          events={events}
-          width={sidebarWidth}
-          onToggleTodo={handleToggleTodo}
-          onSelectDate={handleSelectDate}
-          onOpenCreateForDate={dateStr => handleOpenCreate(dateStr)}
-        />
+        {/* 左侧栏：近 3 天待办日程 (支持折叠与拖拽调节宽度) */}
+        <div className="relative flex h-full flex-shrink-0">
+          <SidebarRecentDays
+            events={events}
+            width={sidebarWidth}
+            isOpen={isLeftSidebarOpen}
+            onToggleCollapse={handleToggleLeftSidebar}
+            onToggleTodo={handleToggleTodo}
+            onSelectDate={handleSelectDate}
+            onOpenCreateForDate={dateStr => handleOpenCreate(dateStr)}
+          />
 
-        {/* 左侧与中间区域可拖拽分割条 */}
-        <div
-          onMouseDown={e => {
-            e.preventDefault();
-            setIsDragging(true);
-          }}
-          className={`w-1.5 cursor-col-resize z-10 transition-colors flex items-center justify-center select-none group border-x border-zinc-900/50 ${
-            isDragging ? 'bg-blue-500' : 'bg-[#222225] hover:bg-blue-500/70'
-          }`}
-          title="按住拖拽调节左右区域大小"
-        >
-          <div className="w-0.5 h-8 rounded-full bg-zinc-600 group-hover:bg-blue-300 opacity-40 group-hover:opacity-100 transition-opacity" />
+          {/* 边缘向左/向右切换小箭头按钮 */}
+          <button
+            onClick={handleToggleLeftSidebar}
+            className="absolute -right-3.5 top-1/2 -translate-y-1/2 z-20 flex items-center justify-center w-4 h-12 bg-[#222225] hover:bg-zinc-700 text-zinc-400 hover:text-zinc-100 border border-zinc-700/80 rounded-r-md shadow-md transition"
+            title={isLeftSidebarOpen ? '收起左侧近3天日程 (向左收起)' : '展开左侧近3天日程 (向右展开)'}
+          >
+            {isLeftSidebarOpen ? <ChevronLeft className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+          </button>
         </div>
+
+        {/* 左侧与中间区域可拖拽分割条 (仅在展开时显示) */}
+        {isLeftSidebarOpen && (
+          <div
+            onMouseDown={e => {
+              e.preventDefault();
+              setIsDragging(true);
+            }}
+            className={`w-1.5 cursor-col-resize z-10 transition-colors flex items-center justify-center select-none group border-x border-zinc-900/50 ${
+              isDragging ? 'bg-blue-500' : 'bg-[#222225] hover:bg-blue-500/70'
+            }`}
+            title="按住拖拽调节左右区域大小"
+          >
+            <div className="w-0.5 h-8 rounded-full bg-zinc-600 group-hover:bg-blue-300 opacity-40 group-hover:opacity-100 transition-opacity" />
+          </div>
+        )}
 
         {/* 中间栏：月视图日历网格 */}
         <MonthView

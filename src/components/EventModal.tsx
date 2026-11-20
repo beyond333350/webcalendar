@@ -11,12 +11,12 @@ interface EventModalProps {
 }
 
 const PRESET_COLORS = [
-  { label: '亮蓝', value: '#3b82f6' },
+  { label: '红色 (日程默认)', value: '#ef4444' },
+  { label: '蓝色 (待办默认)', value: '#3b82f6' },
   { label: '粉红', value: '#f43f5e' },
   { label: '亮橙', value: '#f97316' },
   { label: '青绿', value: '#10b981' },
-  { label: '紫色', value: '#a855f7' },
-  { label: '浅青', value: '#06b6d4' }
+  { label: '紫色', value: '#a855f7' }
 ];
 
 const PRESET_CATEGORIES = ['默认', '工作', '生活', '学习', '项目', '健康'];
@@ -34,7 +34,7 @@ export const EventModal: React.FC<EventModalProps> = ({
   const [startDate, setStartDate] = useState(defaultDate || new Date().toISOString().split('T')[0]);
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
-  const [color, setColor] = useState('#3b82f6');
+  const [color, setColor] = useState('#ef4444');
   const [category, setCategory] = useState('默认');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -46,7 +46,7 @@ export const EventModal: React.FC<EventModalProps> = ({
       setStartDate(initialEvent.start_date || defaultDate || new Date().toISOString().split('T')[0]);
       setStartTime(initialEvent.start_time || '');
       setEndTime(initialEvent.end_time || '');
-      setColor(initialEvent.color || (initialEvent.type === 'todo' ? '#f43f5e' : '#3b82f6'));
+      setColor(initialEvent.color || (initialEvent.type === 'todo' ? '#3b82f6' : '#ef4444'));
       setCategory(initialEvent.category || '默认');
     } else {
       setType('event');
@@ -55,7 +55,7 @@ export const EventModal: React.FC<EventModalProps> = ({
       setStartDate(defaultDate || new Date().toISOString().split('T')[0]);
       setStartTime('');
       setEndTime('');
-      setColor('#3b82f6');
+      setColor('#ef4444');
       setCategory('默认');
     }
   }, [initialEvent, defaultDate, isOpen]);
@@ -111,11 +111,11 @@ export const EventModal: React.FC<EventModalProps> = ({
               type="button"
               onClick={() => {
                 setType('event');
-                if (color === '#f43f5e') setColor('#3b82f6');
+                if (color === '#3b82f6') setColor('#ef4444');
               }}
               className={`py-1.5 text-xs font-medium rounded-md flex items-center justify-center space-x-1.5 transition ${
                 type === 'event'
-                  ? 'bg-blue-600 text-white shadow-sm'
+                  ? 'bg-red-600 text-white shadow-sm'
                   : 'text-zinc-400 hover:text-zinc-200'
               }`}
             >
@@ -126,11 +126,11 @@ export const EventModal: React.FC<EventModalProps> = ({
               type="button"
               onClick={() => {
                 setType('todo');
-                if (color === '#3b82f6') setColor('#f43f5e');
+                if (color === '#ef4444') setColor('#3b82f6');
               }}
               className={`py-1.5 text-xs font-medium rounded-md flex items-center justify-center space-x-1.5 transition ${
                 type === 'todo'
-                  ? 'bg-rose-600 text-white shadow-sm'
+                  ? 'bg-blue-600 text-white shadow-sm'
                   : 'text-zinc-400 hover:text-zinc-200'
               }`}
             >

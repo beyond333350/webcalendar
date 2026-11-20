@@ -11,7 +11,7 @@ import {
   isSameDay,
   isToday
 } from 'date-fns';
-import { Sun, Cloud, CloudRain, CloudSnow } from 'lucide-react';
+import { Sun, Cloud, CloudRain, CloudSnow, CheckCircle2, Circle } from 'lucide-react';
 
 interface MonthViewProps {
   currentDate: Date;
@@ -71,8 +71,14 @@ export const MonthView: React.FC<MonthViewProps> = ({
           const isDayToday = isToday(day);
           const isSelected = selectedDate === dateStr;
 
-          // 获取该日期的事件与待办
-          const dayEvents = events.filter(e => e.start_date === dateStr);
+          // 获取该日期的事件与待办 (支持跨天事件区间匹配)
+          const dayEvents = events.filter(e => {
+            if (e.start_date === dateStr) return true;
+            if (e.end_date && e.end_date > e.start_date) {
+              return dateStr >= e.start_date && dateStr <= e.end_date;
+            }
+            return false;
+          });
           const maxVisible = 3;
           const visibleEvents = dayEvents.slice(0, maxVisible);
           const hiddenCount = dayEvents.length - maxVisible;
@@ -85,21 +91,22 @@ export const MonthView: React.FC<MonthViewProps> = ({
                 !isCurrentMonth ? 'bg-[#151518]/60 text-zinc-600' : 'bg-[#18181b] hover:bg-zinc-800/40'
               } ${isSelected ? 'ring-1 ring-blue-500 bg-blue-950/20' : ''}`}
             >
-              {/* 格子顶部：天气与日期 */}
+              {/* 格子顶部：天气与月日 (例如 9月11日显示 11/9) */}
               <div className="flex items-center justify-between mb-1">
                 <span className="opacity-80 hover:opacity-100 transition">
                   {getWeatherIcon(day)}
                 </span>
                 <span
-                  className={`w-5 h-5 flex items-center justify-center rounded-full text-xs font-medium ${
+                  className={`px-1.5 py-0.5 rounded text-xs font-semibold leading-none ${
                     isDayToday
-                      ? 'bg-blue-600 text-white font-bold'
+                      ? 'bg-blue-600 text-white font-bold shadow-xs'
                       : isCurrentMonth
                       ? 'text-zinc-200'
                       : 'text-zinc-600'
                   }`}
+                  title={format(day, 'yyyy年M月d日')}
                 >
-                  {format(day, 'd')}
+                  {`${format(day, 'd')}/${format(day, 'M')}`}
                 </span>
               </div>
 
@@ -108,6 +115,8 @@ export const MonthView: React.FC<MonthViewProps> = ({
                 {visibleEvents.map(event => {
                   const isDone = Boolean(event.is_completed);
                   const isTodo = event.type === 'todo';
+                  const itemColor = event.color || (isTodo ? '#3b82f6' : '#ef4444');
+
                   return (
                     <div
                       key={event.id}
@@ -117,11 +126,25 @@ export const MonthView: React.FC<MonthViewProps> = ({
                       }}
                       className="px-1.5 py-0.5 rounded text-[11px] truncate flex items-center space-x-1 transition shadow-sm font-medium"
                       style={{
-                        backgroundColor: `${event.color || (isTodo ? '#f43f5e' : '#3b82f6')}22`,
-                        color: event.color || (isTodo ? '#f43f5e' : '#60a5fa'),
-                        borderLeft: `2.5px solid ${event.color || (isTodo ? '#f43f5e' : '#3b82f6')}`
+                        backgroundColor: `${itemColor}22`,
+                        color: isTodo ? '#93c5fd' : '#fca5a5',
+                        borderLeft: `2.5px solid ${itemColor}`
                       }}
                     >
+                      {/* 图标区分待办与日程 */}
+                      {isTodo ? (
+                        isDone ? (
+                          <CheckCircle2 className="w-2.5 h-2.5 text-emerald-400 flex-shrink-0" />
+                        ) : (
+                          <Circle className="w-2.5 h-2.5 flex-shrink-0 opacity-70" />
+                        )
+                      ) : (
+                        <span
+                          className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: itemColor }}
+                        />
+                      )}
+
                       {event.start_time && (
                         <span className="text-[9px] opacity-80">{event.start_time}</span>
                       )}

@@ -30,12 +30,11 @@ export const Header: React.FC<HeaderProps> = ({
     <header className="h-16 border-b border-zinc-800 bg-[#18181b] px-6 flex items-center justify-between select-none">
       {/* 左侧：Logo & 标题 */}
       <div className="flex items-center space-x-3">
-        <div className="w-8 h-8 rounded-lg bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400">
+        <div className="w-8 h-8 rounded-lg bg-red-600/20 border border-red-500/30 flex items-center justify-center text-red-400">
           <CalendarIcon className="w-4 h-4" />
         </div>
         <div className="flex items-baseline space-x-2">
           <span className="font-semibold text-lg text-zinc-100 tracking-wide">WebCalendar</span>
-          <span className="text-xs px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700/50">Full Calendar</span>
         </div>
       </div>
 

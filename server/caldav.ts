@@ -21,23 +21,24 @@ function unescapeICalText(str: string): string {
     .trim();
 }
 
-// 解析 iCalendar 日期时间 (支持 YYYYMMDD, YYYYMMDDTHHmmss, YYYYMMDDTHHmmssZ)
+// 解析 iCalendar 日期时间 (支持 YYYYMMDD, YYYYMMDDTHHmmss, YYYYMMDDTHHmmssZ, 兼容 TZID 参数与破折号格式)
 function parseICalDateTime(raw: string): { date: string; time: string } {
-  const clean = raw.trim();
-  // 纯日期: 20261120
-  if (/^\d{8}$/.test(clean)) {
-    const y = clean.slice(0, 4);
-    const m = clean.slice(4, 6);
-    const d = clean.slice(6, 8);
-    return { date: `${y}-${m}-${d}`, time: '' };
+  if (!raw) return { date: '', time: '' };
+  const clean = raw.trim().replace(/^["']|["']$/g, '');
+
+  // 纯日期: 20261120 或 2026-11-20
+  const dateOnlyMatch = clean.match(/^(\d{4})-?(\d{2})-?(\d{2})$/);
+  if (dateOnlyMatch) {
+    return { date: `${dateOnlyMatch[1]}-${dateOnlyMatch[2]}-${dateOnlyMatch[3]}`, time: '' };
   }
 
-  // 日期时间: 20261120T143000 或 20261120T143000Z
-  const match = clean.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z)?/);
+  // 日期时间: 20261120T143000 或 20261120T143000Z 或带冒号/连字符格式 2026-11-20T14:30:00
+  const match = clean.match(/^(\d{4})-?(\d{2})-?(\d{2})T(\d{2}):?(\d{2})(?::?(\d{2}))?(?:\.\d+)?(Z)?/i);
   if (match) {
     const [, y, m, d, hh, mm, ss, isUtc] = match;
     if (isUtc) {
-      const utcDate = new Date(Date.UTC(+y, +m - 1, +d, +hh, +mm, +ss));
+      const sec = ss ? +ss : 0;
+      const utcDate = new Date(Date.UTC(+y, +m - 1, +d, +hh, +mm, sec));
       const pad = (n: number) => String(n).padStart(2, '0');
       const localDate = `${utcDate.getFullYear()}-${pad(utcDate.getMonth() + 1)}-${pad(utcDate.getDate())}`;
       const localTime = `${pad(utcDate.getHours())}:${pad(utcDate.getMinutes())}`;
@@ -46,8 +47,18 @@ function parseICalDateTime(raw: string): { date: string; time: string } {
     return { date: `${y}-${m}-${d}`, time: `${hh}:${mm}` };
   }
 
-  // 兜底为今天
-  return { date: new Date().toISOString().split('T')[0], time: '' };
+  // 尝试使用系统 Date.parse 解析
+  const parsedTs = Date.parse(clean);
+  if (!isNaN(parsedTs)) {
+    const d = new Date(parsedTs);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return {
+      date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
+      time: `${pad(d.getHours())}:${pad(d.getMinutes())}`
+    };
+  }
+
+  return { date: '', time: '' };
 }
 
 // 清理 XML 实体和 CDATA
@@ -93,6 +104,8 @@ export function parseICS(icsText: string): ParsedItem[] {
   let endDate = '';
   let startTime = '';
   let endTime = '';
+  let createdDate = '';
+  let createdTime = '';
   let isCompleted = 0;
   let category = '默认';
 
@@ -110,6 +123,8 @@ export function parseICS(icsText: string): ParsedItem[] {
       endDate = '';
       startTime = '';
       endTime = '';
+      createdDate = '';
+      createdTime = '';
       isCompleted = 0;
       category = '默认';
       continue;
@@ -125,6 +140,8 @@ export function parseICS(icsText: string): ParsedItem[] {
       endDate = '';
       startTime = '';
       endTime = '';
+      createdDate = '';
+      createdTime = '';
       isCompleted = 0;
       category = '默认';
       continue;
@@ -135,10 +152,24 @@ export function parseICS(icsText: string): ParsedItem[] {
         if (!uid) {
           uid = `cal_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
         }
+        // 核心修复：优先从 DUE 或 DTEND 反推 startDate（VTODO 常见只有 DUE 截止日期无 DTSTART）
+        if (!startDate && endDate) {
+          startDate = endDate;
+          if (!startTime && endTime) startTime = endTime;
+        }
+        if (!endDate && startDate) {
+          endDate = startDate;
+          if (!endTime && startTime) endTime = startTime;
+        }
+        // 若没有 DTSTART 和 DUE，尝试取创建时间 CREATED
+        if (!startDate && createdDate) {
+          startDate = createdDate;
+          startTime = createdTime;
+          if (!endDate) endDate = startDate;
+        }
+        // 若仍没有日期，才 fallback 到今天
         if (!startDate) {
           startDate = new Date().toISOString().split('T')[0];
-        }
-        if (!endDate) {
           endDate = startDate;
         }
 
@@ -192,6 +223,20 @@ export function parseICS(icsText: string): ParsedItem[] {
         endTime = dt.time;
         break;
       }
+      case 'CREATED': {
+        const dt = parseICalDateTime(propValue);
+        createdDate = dt.date;
+        createdTime = dt.time;
+        break;
+      }
+      case 'LAST-MODIFIED': {
+        if (!createdDate) {
+          const dt = parseICalDateTime(propValue);
+          createdDate = dt.date;
+          createdTime = dt.time;
+        }
+        break;
+      }
       case 'STATUS':
         if (propValue.toUpperCase().includes('COMPLETED')) {
           isCompleted = 1;
@@ -202,9 +247,15 @@ export function parseICS(icsText: string): ParsedItem[] {
           isCompleted = 1;
         }
         break;
-      case 'COMPLETED':
+      case 'COMPLETED': {
         isCompleted = 1;
+        const dt = parseICalDateTime(propValue);
+        if (dt.date && !endDate) {
+          endDate = dt.date;
+          endTime = dt.time;
+        }
         break;
+      }
       case 'CATEGORIES':
         category = unescapeICalText(propValue.split(',')[0]);
         break;
@@ -396,8 +447,8 @@ export async function syncCalDAVForUser(userId: number): Promise<CalDAVSyncResul
   const todoUrl = (settings.caldav_todo_url || '').trim();
   const username = settings.caldav_user || '';
   const password = settings.caldav_password || '';
-  const calendarColor = settings.calendar_color || '#3b82f6';
-  const todoColor = settings.todo_color || '#f43f5e';
+  const calendarColor = settings.calendar_color || '#ef4444';
+  const todoColor = settings.todo_color || '#3b82f6';
 
   const headers: Record<string, string> = {
     'User-Agent': 'WebCalendar/1.0'
@@ -455,6 +506,9 @@ export async function syncCalDAVForUser(userId: number): Promise<CalDAVSyncResul
   `);
 
   const runSyncTransaction = db.transaction((items: ParsedItem[]) => {
+    // 同步前清除旧 CalDAV 缓存，清除此前误标为 11-20 的脏数据并完全对齐 Radicale 服务端当前状态
+    db.prepare("DELETE FROM events WHERE user_id = ? AND id LIKE 'cal_%'").run(userId);
+
     let saved = 0;
     for (const item of items) {
       const dbId = `cal_${item.uid}`;

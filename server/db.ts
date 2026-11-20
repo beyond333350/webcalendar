@@ -27,8 +27,8 @@ db.exec(`
     caldav_todo_url TEXT DEFAULT '',
     caldav_user TEXT DEFAULT '',
     caldav_password TEXT DEFAULT '',
-    calendar_color TEXT DEFAULT '#3b82f6',
-    todo_color TEXT DEFAULT '#f43f5e',
+    calendar_color TEXT DEFAULT '#ef4444',
+    todo_color TEXT DEFAULT '#3b82f6',
     FOREIGN KEY(user_id) REFERENCES users(id)
   );
 
@@ -43,7 +43,7 @@ db.exec(`
     start_time TEXT,
     end_time TEXT,
     is_completed INTEGER DEFAULT 0,
-    color TEXT DEFAULT '#3b82f6',
+    color TEXT DEFAULT '#ef4444',
     category TEXT DEFAULT '默认',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
