@@ -57,6 +57,7 @@ export const App: React.FC = () => {
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
   const [eventModalDate, setEventModalDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
+  const [eventModalDefaultType, setEventModalDefaultType] = useState<'event' | 'todo'>('event');
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
 
   // 初始化加载
@@ -236,9 +237,10 @@ export const App: React.FC = () => {
   };
 
   // 打开创建模态框
-  const handleOpenCreate = (dateStr?: string) => {
+  const handleOpenCreate = (dateStr?: string, defaultType: 'event' | 'todo' = 'event') => {
     setEditingEvent(null);
     setEventModalDate(dateStr || selectedDate || format(new Date(), 'yyyy-MM-dd'));
+    setEventModalDefaultType(defaultType);
     setIsEventModalOpen(true);
   };
 
@@ -246,6 +248,7 @@ export const App: React.FC = () => {
   const handleEditEvent = (event: CalendarEvent) => {
     setEditingEvent(event);
     setEventModalDate(event.start_date);
+    setEventModalDefaultType(event.type || 'event');
     setIsEventModalOpen(true);
   };
 
@@ -279,7 +282,7 @@ export const App: React.FC = () => {
             onToggleCollapse={handleToggleLeftSidebar}
             onToggleTodo={handleToggleTodo}
             onSelectDate={handleSelectDate}
-            onOpenCreateForDate={dateStr => handleOpenCreate(dateStr)}
+            onOpenCreateForDate={(dateStr, type) => handleOpenCreate(dateStr, type)}
           />
 
           {/* 边缘向左/向右切换小箭头按钮 */}
@@ -327,7 +330,7 @@ export const App: React.FC = () => {
           onToggleTodo={handleToggleTodo}
           onEditEvent={handleEditEvent}
           onDeleteEvent={handleDeleteEvent}
-          onOpenCreateForDate={dateStr => handleOpenCreate(dateStr)}
+          onOpenCreateForDate={(dateStr, type) => handleOpenCreate(dateStr, type)}
         />
       </div>
 
@@ -338,6 +341,7 @@ export const App: React.FC = () => {
         onSave={handleSaveEvent}
         initialEvent={editingEvent}
         defaultDate={eventModalDate}
+        defaultType={eventModalDefaultType}
       />
 
       <SettingsModal

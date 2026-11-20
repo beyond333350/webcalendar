@@ -561,19 +561,22 @@ function formatICalDate(dateStr: string, timeStr?: string): string {
   return `${cleanDate}T${cleanTime}`;
 }
 
-// 将单个日程或待办推送到 Radicale CalDAV 服务器
+// 将单个日程或待办推送到 Radicale CalDAV 服务器 (严格按类型分流到对应集合)
 export async function pushEventToCalDAV(userId: number, item: any): Promise<{ success: boolean; message?: string }> {
   const settings = db.prepare('SELECT * FROM user_settings WHERE user_id = ?').get(userId) as any;
   if (!settings) return { success: false, message: '未配置用户设置' };
 
   const isTodo = item.type === 'todo';
+  // 严格区分：日程 (event) 只能推送到 caldav_url (工作日历)；待办 (todo) 只能推送到 caldav_todo_url (日常待办)
+  // 严禁将待办回退推送到工作日历集合！
   const targetUrlStr = isTodo
-    ? (settings.caldav_todo_url || settings.caldav_url || '').trim()
+    ? (settings.caldav_todo_url || '').trim()
     : (settings.caldav_url || '').trim();
 
   if (!targetUrlStr) {
-    // 用户未配置对应 CalDAV 集合，仅保留本地修改
-    return { success: true, message: '未配置 CalDAV 集合 URL，仅本地保存' };
+    const missingName = isTodo ? '“日常待办集合 URL”' : '“工作日历集合 URL”';
+    console.warn(`未配置${missingName}，已仅在本地数据库保存`);
+    return { success: true, message: `未配置${missingName}，仅本地保存` };
   }
 
   const username = settings.caldav_user || '';
@@ -672,14 +675,15 @@ export async function pushEventToCalDAV(userId: number, item: any): Promise<{ su
   }
 }
 
-// 从 Radicale CalDAV 服务器删除指定事项
+// 从 Radicale CalDAV 服务器删除指定事项 (严格分流到对应集合)
 export async function deleteEventFromCalDAV(userId: number, eventId: string, type: string): Promise<{ success: boolean; message?: string }> {
   const settings = db.prepare('SELECT * FROM user_settings WHERE user_id = ?').get(userId) as any;
   if (!settings) return { success: false, message: '未配置用户设置' };
 
   const isTodo = type === 'todo';
+  // 严格区分：日程从 caldav_url 删除，待办从 caldav_todo_url 删除
   const targetUrlStr = isTodo
-    ? (settings.caldav_todo_url || settings.caldav_url || '').trim()
+    ? (settings.caldav_todo_url || '').trim()
     : (settings.caldav_url || '').trim();
 
   if (!targetUrlStr) {

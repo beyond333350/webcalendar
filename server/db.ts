@@ -69,6 +69,12 @@ try {
     SET todo_color = '#3b82f6'
     WHERE todo_color = '#f43f5e' OR todo_color = '#ef4444';
 
+    -- 若用户配置了 beyond333350 的工作日历但待办 URL 尚为空，自动补全其日常待办集合 URL
+    UPDATE user_settings
+    SET caldav_todo_url = 'https://rili.359261634.xyz/beyond333350/9209924e-72f6-c884-6e97-e546a6f9022a/'
+    WHERE (caldav_url LIKE '%beyond333350%' OR caldav_user = 'beyond333350')
+      AND (caldav_todo_url IS NULL OR caldav_todo_url = '');
+
     UPDATE events
     SET color = '#ef4444'
     WHERE type = 'event' AND (color = '#3b82f6' OR color = '#f43f5e');

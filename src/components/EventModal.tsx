@@ -8,6 +8,7 @@ interface EventModalProps {
   onSave: (event: Partial<CalendarEvent>) => Promise<void>;
   initialEvent?: CalendarEvent | null;
   defaultDate?: string;
+  defaultType?: ItemType;
 }
 
 const PRESET_COLORS = [
@@ -26,39 +27,42 @@ export const EventModal: React.FC<EventModalProps> = ({
   onClose,
   onSave,
   initialEvent,
-  defaultDate
+  defaultDate,
+  defaultType = 'event'
 }) => {
-  const [type, setType] = useState<ItemType>('event');
+  const [type, setType] = useState<ItemType>(defaultType);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [startDate, setStartDate] = useState(defaultDate || new Date().toISOString().split('T')[0]);
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
-  const [color, setColor] = useState('#ef4444');
+  const [color, setColor] = useState(defaultType === 'todo' ? '#3b82f6' : '#ef4444');
   const [category, setCategory] = useState('默认');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (initialEvent) {
-      setType(initialEvent.type || 'event');
+      const currentType = initialEvent.type || 'event';
+      setType(currentType);
       setTitle(initialEvent.title || '');
       setDescription(initialEvent.description || '');
       setStartDate(initialEvent.start_date || defaultDate || new Date().toISOString().split('T')[0]);
       setStartTime(initialEvent.start_time || '');
       setEndTime(initialEvent.end_time || '');
-      setColor(initialEvent.color || (initialEvent.type === 'todo' ? '#3b82f6' : '#ef4444'));
+      setColor(initialEvent.color || (currentType === 'todo' ? '#3b82f6' : '#ef4444'));
       setCategory(initialEvent.category || '默认');
     } else {
-      setType('event');
+      const currentType = defaultType || 'event';
+      setType(currentType);
       setTitle('');
       setDescription('');
       setStartDate(defaultDate || new Date().toISOString().split('T')[0]);
       setStartTime('');
       setEndTime('');
-      setColor('#ef4444');
+      setColor(currentType === 'todo' ? '#3b82f6' : '#ef4444');
       setCategory('默认');
     }
-  }, [initialEvent, defaultDate, isOpen]);
+  }, [initialEvent, defaultDate, defaultType, isOpen]);
 
   if (!isOpen) return null;
 
@@ -92,9 +96,12 @@ export const EventModal: React.FC<EventModalProps> = ({
       <div className="bg-[#1e1e22] border border-zinc-800 rounded-xl w-full max-w-md shadow-2xl overflow-hidden select-none animate-in fade-in zoom-in-95 duration-150">
         {/* 对话框头部 */}
         <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-zinc-100">
-            {initialEvent ? '编辑日程 / 待办' : '新建日程 / 待办'}
-          </h3>
+          <div className="flex items-center space-x-2">
+            <span className={`w-2 h-2 rounded-full ${type === 'todo' ? 'bg-blue-500' : 'bg-red-500'}`} />
+            <h3 className="text-sm font-semibold text-zinc-100">
+              {initialEvent ? '编辑事项' : (type === 'todo' ? '新建日常待办（同步至日常待办）' : '新建日历日程（同步至工作日历）')}
+            </h3>
+          </div>
           <button
             onClick={onClose}
             className="p-1 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 rounded-md transition"

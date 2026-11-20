@@ -345,23 +345,29 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-zinc-300 mb-1 flex items-center justify-between">
-                  <span>日历日程集合 URL (VEVENT)</span>
-                  <span className="text-[10px] text-zinc-500">用于月视图日程</span>
+                <label className="block text-xs font-medium text-zinc-200 mb-1 flex items-center justify-between">
+                  <span className="flex items-center space-x-1.5">
+                    <span className="w-2 h-2 rounded-full bg-red-500 inline-block" />
+                    <span>工作日历集合 URL (VEVENT)</span>
+                  </span>
+                  <span className="text-[10px] text-red-400">网页新建日历自动同步到此集合</span>
                 </label>
                 <input
                   type="text"
                   value={settings.caldav_url || ''}
                   onChange={e => setSettings({ ...settings, caldav_url: e.target.value })}
                   placeholder="https://rili.359261634.xyz/beyond333350/a2264f90-750d-cb51-fcd9-dffc825ff915/"
-                  className="w-full px-3 py-1.5 text-xs bg-zinc-900 border border-zinc-700 rounded text-zinc-100 focus:outline-hidden focus:border-blue-500 font-mono text-[11px]"
+                  className="w-full px-3 py-1.5 text-xs bg-zinc-900 border border-zinc-700 rounded text-zinc-100 focus:outline-hidden focus:border-red-500 font-mono text-[11px]"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-zinc-300 mb-1 flex items-center justify-between">
-                  <span>待办任务集合 URL (VTODO)</span>
-                  <span className="text-[10px] text-zinc-500">用于左侧栏待办清单</span>
+                <label className="block text-xs font-medium text-zinc-200 mb-1 flex items-center justify-between">
+                  <span className="flex items-center space-x-1.5">
+                    <span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />
+                    <span>日常待办集合 URL (VTODO)</span>
+                  </span>
+                  <span className="text-[10px] text-blue-400">网页新建待办自动同步到此集合</span>
                 </label>
                 <input
                   type="text"

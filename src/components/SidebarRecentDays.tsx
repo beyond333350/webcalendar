@@ -11,7 +11,7 @@ interface SidebarRecentDaysProps {
   onToggleCollapse?: () => void;
   onToggleTodo: (event: CalendarEvent) => void;
   onSelectDate: (dateStr: string) => void;
-  onOpenCreateForDate: (dateStr: string) => void;
+  onOpenCreateForDate: (dateStr: string, defaultType?: 'event' | 'todo') => void;
 }
 
 export const SidebarRecentDays: React.FC<SidebarRecentDaysProps> = ({
@@ -133,13 +133,21 @@ export const SidebarRecentDays: React.FC<SidebarRecentDaysProps> = ({
                 )}
               </div>
 
-              {/* 快速在该日新建按钮 */}
-              <button
-                onClick={() => onOpenCreateForDate(dateStr)}
-                className="mt-2 w-full py-1 text-[11px] text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60 rounded border border-dashed border-zinc-800 transition"
-              >
-                + 添加本日日程/待办
-              </button>
+              {/* 快速在该日新建按钮组：添加日历 / 添加待办 */}
+              <div className="mt-2 grid grid-cols-2 gap-1.5">
+                <button
+                  onClick={() => onOpenCreateForDate(dateStr, 'event')}
+                  className="py-1 text-[10px] text-red-400 hover:text-red-300 hover:bg-red-950/30 rounded border border-dashed border-red-500/30 transition flex items-center justify-center space-x-1"
+                >
+                  <span>+ 日历</span>
+                </button>
+                <button
+                  onClick={() => onOpenCreateForDate(dateStr, 'todo')}
+                  className="py-1 text-[10px] text-blue-400 hover:text-blue-300 hover:bg-blue-950/30 rounded border border-dashed border-blue-500/30 transition flex items-center justify-center space-x-1"
+                >
+                  <span>+ 待办</span>
+                </button>
+              </div>
             </div>
           );
         })}

@@ -13,7 +13,7 @@ interface DayDrawerProps {
   onToggleTodo: (event: CalendarEvent) => void;
   onEditEvent: (event: CalendarEvent) => void;
   onDeleteEvent: (id: string) => void;
-  onOpenCreateForDate: (dateStr: string) => void;
+  onOpenCreateForDate: (dateStr: string, defaultType?: 'event' | 'todo') => void;
 }
 
 export const DayDrawer: React.FC<DayDrawerProps> = ({
@@ -29,6 +29,7 @@ export const DayDrawer: React.FC<DayDrawerProps> = ({
 }) => {
   const dateObj = selectedDate ? parseISO(selectedDate) : new Date();
   const dayEvents = selectedDate ? events.filter(e => e.start_date === selectedDate) : [];
+  const currentDateStr = selectedDate || format(new Date(), 'yyyy-MM-dd');
 
   return (
     <div className="relative flex h-full flex-shrink-0">
@@ -73,14 +74,23 @@ export const DayDrawer: React.FC<DayDrawerProps> = ({
           </div>
         </div>
 
-        {/* 新建快捷按钮 */}
-        <div className="p-3 border-b border-zinc-800 min-w-[320px]">
+        {/* 顶部独立快捷新建按钮：红色添加日历 / 蓝色添加待办 */}
+        <div className="p-3 border-b border-zinc-800 min-w-[320px] grid grid-cols-2 gap-2">
           <button
-            onClick={() => onOpenCreateForDate(selectedDate || format(new Date(), 'yyyy-MM-dd'))}
-            className="w-full py-2 px-3 text-xs font-medium rounded-md bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 flex items-center justify-center space-x-1.5 transition"
+            onClick={() => onOpenCreateForDate(currentDateStr, 'event')}
+            className="py-1.5 px-2.5 text-xs font-medium rounded-md bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-500/30 flex items-center justify-center space-x-1 transition shadow-xs"
+            title="添加日历日程（将同步至工作日历）"
           >
-            <Plus className="w-3.5 h-3.5" />
-            <span>添加今日日程或待办</span>
+            <Plus className="w-3.5 h-3.5 text-red-400" />
+            <span>添加日历</span>
+          </button>
+          <button
+            onClick={() => onOpenCreateForDate(currentDateStr, 'todo')}
+            className="py-1.5 px-2.5 text-xs font-medium rounded-md bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 flex items-center justify-center space-x-1 transition shadow-xs"
+            title="添加待办任务（将同步至日常待办）"
+          >
+            <CheckSquare className="w-3.5 h-3.5 text-blue-400" />
+            <span>添加待办</span>
           </button>
         </div>
 
@@ -177,6 +187,24 @@ export const DayDrawer: React.FC<DayDrawerProps> = ({
               );
             })
           )}
+        </div>
+
+        {/* 底部补充快捷新建栏 */}
+        <div className="p-3 border-t border-zinc-800 min-w-[320px] bg-zinc-900/40 grid grid-cols-2 gap-2">
+          <button
+            onClick={() => onOpenCreateForDate(currentDateStr, 'event')}
+            className="py-1 px-2 text-[11px] font-medium rounded bg-zinc-800/80 hover:bg-red-950/40 text-red-400 border border-red-500/30 flex items-center justify-center space-x-1 transition"
+          >
+            <Plus className="w-3 h-3 text-red-400" />
+            <span>新建日历</span>
+          </button>
+          <button
+            onClick={() => onOpenCreateForDate(currentDateStr, 'todo')}
+            className="py-1 px-2 text-[11px] font-medium rounded bg-zinc-800/80 hover:bg-blue-950/40 text-blue-400 border border-blue-500/30 flex items-center justify-center space-x-1 transition"
+          >
+            <CheckSquare className="w-3 h-3 text-blue-400" />
+            <span>新建待办</span>
+          </button>
         </div>
       </aside>
     </div>
