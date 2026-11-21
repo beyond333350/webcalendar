@@ -150,7 +150,7 @@ export function parseICS(icsText: string): ParsedItem[] {
     if (trimmed === 'END:VEVENT' || trimmed === 'END:VTODO') {
       if (inComponent) {
         if (!uid) {
-          uid = `cal_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+          uid = `${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
         }
         // 核心修复：优先从 DUE 或 DTEND 反推 startDate（VTODO 常见只有 DUE 截止日期无 DTSTART）
         if (!startDate && endDate) {
@@ -516,12 +516,12 @@ export async function syncCalDAVForUser(userId: number): Promise<CalDAVSyncResul
   `);
 
   const runSyncTransaction = db.transaction((items: ParsedItem[]) => {
-    // 同步前清除旧 CalDAV 缓存，清除此前误标为 11-20 的脏数据并完全对齐 Radicale 服务端当前状态
-    db.prepare("DELETE FROM events WHERE user_id = ? AND id LIKE 'cal_%'").run(userId);
+    // 同步前清除旧 CalDAV 缓存以及历史遗留的 evt_ 或 local- 重复项，确保 Radicale 为唯一权威源杜绝双重主键冲突
+    db.prepare("DELETE FROM events WHERE user_id = ? AND (id LIKE 'cal_%' OR id LIKE 'evt_%' OR id LIKE 'local-%')").run(userId);
 
     let saved = 0;
     for (const item of items) {
-      const dbId = `cal_${item.uid}`;
+      const dbId = item.uid.startsWith('cal_') ? item.uid : `cal_${item.uid}`;
       const color = item.type === 'todo' ? todoColor : calendarColor;
       insertOrUpdate.run(
         dbId,

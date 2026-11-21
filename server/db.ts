@@ -82,6 +82,15 @@ try {
     UPDATE events
     SET color = '#3b82f6'
     WHERE type = 'todo' AND (color = '#f43f5e' OR color = '#ef4444');
+
+    -- 清理历史因主键前缀不一致产生的重复项：如果同一用户下存在对应 cal_ 记录，删除旧的 evt_ 孤儿记录
+    DELETE FROM events
+    WHERE (id LIKE 'evt_%' OR id LIKE 'local-%')
+      AND EXISTS (
+        SELECT 1 FROM events e2
+        WHERE e2.user_id = events.user_id
+          AND (e2.id = ('cal_' || events.id) OR (e2.title = events.title AND e2.start_date = events.start_date AND e2.type = events.type))
+      );
   `);
 } catch (e) {
   // 忽略已存在或初次创建错误

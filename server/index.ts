@@ -196,7 +196,9 @@ app.get('/api/events', authenticateToken, async (req: any, res: any) => {
 
 app.post('/api/events', authenticateToken, async (req: any, res: any) => {
   const { id, title, description, type, start_date, end_date, start_time, end_time, color, category } = req.body;
-  const eventId = id || `evt_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+  // 统一使用 cal_ 前缀格式，与 CalDAV 同步拉取时的 ID 规范完全一致，彻底避免本地与同步产生两条相同记录
+  const uid = `${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+  const eventId = id || `cal_${uid}`;
   const finalColor = color || (type === 'todo' ? '#3b82f6' : '#ef4444');
 
   db.prepare(`
@@ -216,19 +218,23 @@ app.post('/api/events', authenticateToken, async (req: any, res: any) => {
     category || '默认'
   );
 
-  // 反向推送到 Radicale CalDAV 服务器
-  pushEventToCalDAV(req.user.id, {
-    id: eventId,
-    title,
-    description,
-    type: type || 'event',
-    start_date,
-    end_date: end_date || start_date,
-    start_time: start_time || '',
-    end_time: end_time || '',
-    is_completed: 0,
-    category: category || '默认'
-  }).catch(e => console.error('Push to CalDAV error:', e));
+  // 反向推送到 Radicale CalDAV 服务器并妥善捕获处理异常
+  try {
+    await pushEventToCalDAV(req.user.id, {
+      id: eventId,
+      title,
+      description,
+      type: type || 'event',
+      start_date,
+      end_date: end_date || start_date,
+      start_time: start_time || '',
+      end_time: end_time || '',
+      is_completed: 0,
+      category: category || '默认'
+    });
+  } catch (e) {
+    console.error('Push to CalDAV error:', e);
+  }
 
   res.json({ id: eventId, success: true });
 });
@@ -257,18 +263,22 @@ app.put('/api/events/:id', authenticateToken, async (req: any, res: any) => {
   );
 
   // 反向推送到 Radicale CalDAV 服务器 (支持待办完成状态同步、标题描述修改等)
-  pushEventToCalDAV(req.user.id, {
-    id: req.params.id,
-    title,
-    description,
-    type,
-    start_date,
-    end_date: end_date || start_date,
-    start_time: start_time || '',
-    end_time: end_time || '',
-    is_completed: is_completed ? 1 : 0,
-    category: category || '默认'
-  }).catch(e => console.error('Push update to CalDAV error:', e));
+  try {
+    await pushEventToCalDAV(req.user.id, {
+      id: req.params.id,
+      title,
+      description,
+      type,
+      start_date,
+      end_date: end_date || start_date,
+      start_time: start_time || '',
+      end_time: end_time || '',
+      is_completed: is_completed ? 1 : 0,
+      category: category || '默认'
+    });
+  } catch (e) {
+    console.error('Push update to CalDAV error:', e);
+  }
 
   res.json({ success: true });
 });
@@ -278,9 +288,11 @@ app.delete('/api/events/:id', authenticateToken, async (req: any, res: any) => {
   db.prepare('DELETE FROM events WHERE id = ? AND user_id = ?').run(req.params.id, req.user.id);
 
   if (existing) {
-    deleteEventFromCalDAV(req.user.id, req.params.id, existing.type).catch(e =>
-      console.error('Delete from CalDAV error:', e)
-    );
+    try {
+      await deleteEventFromCalDAV(req.user.id, req.params.id, existing.type);
+    } catch (e) {
+      console.error('Delete from CalDAV error:', e);
+    }
   }
 
   res.json({ success: true });
