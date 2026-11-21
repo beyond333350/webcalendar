@@ -108,7 +108,103 @@ app.put('/api/settings', authenticateToken, (req: any, res: any) => {
   res.json({ success: true });
 });
 
-// CalDAV 真实连接测试接口 (支持测试日历和待办双 URL)
+// CalDAV 集合源管理接口
+app.get('/api/caldav/sources', authenticateToken, (req: any, res: any) => {
+  const sources = db.prepare('SELECT * FROM caldav_sources WHERE user_id = ? ORDER BY type ASC, is_default DESC, created_at ASC').all(req.user.id);
+  res.json(sources);
+});
+
+app.post('/api/caldav/sources', authenticateToken, (req: any, res: any) => {
+  const { name, type, url, username, password, color, is_default, enabled } = req.body;
+  if (!name || !url) {
+    return res.status(400).json({ error: '集合名称和 URL 不能为空' });
+  }
+  const sourceId = `src_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+  const itemType = type === 'todo' ? 'todo' : 'event';
+  const defaultVal = is_default ? 1 : 0;
+  const enabledVal = enabled !== false && enabled !== 0 ? 1 : 0;
+  const itemColor = color || (itemType === 'todo' ? '#3b82f6' : '#ef4444');
+
+  if (defaultVal === 1) {
+    db.prepare('UPDATE caldav_sources SET is_default = 0 WHERE user_id = ? AND type = ?').run(req.user.id, itemType);
+  }
+
+  db.prepare(`
+    INSERT INTO caldav_sources (id, user_id, name, type, url, username, password, color, is_default, enabled)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    sourceId,
+    req.user.id,
+    name.trim(),
+    itemType,
+    url.trim(),
+    username || '',
+    password || '',
+    itemColor,
+    defaultVal,
+    enabledVal
+  );
+
+  // 若为默认源，联动更新 user_settings 保持向后兼容
+  if (defaultVal === 1) {
+    if (itemType === 'event') {
+      db.prepare('UPDATE user_settings SET caldav_url = ?, calendar_color = ? WHERE user_id = ?').run(url.trim(), itemColor, req.user.id);
+    } else {
+      db.prepare('UPDATE user_settings SET caldav_todo_url = ?, todo_color = ? WHERE user_id = ?').run(url.trim(), itemColor, req.user.id);
+    }
+  }
+
+  res.json({ id: sourceId, success: true });
+});
+
+app.put('/api/caldav/sources/:id', authenticateToken, (req: any, res: any) => {
+  const { name, type, url, username, password, color, is_default, enabled } = req.body;
+  const itemType = type === 'todo' ? 'todo' : 'event';
+  const defaultVal = is_default ? 1 : 0;
+  const enabledVal = enabled !== false && enabled !== 0 ? 1 : 0;
+  const itemColor = color || (itemType === 'todo' ? '#3b82f6' : '#ef4444');
+
+  if (defaultVal === 1) {
+    db.prepare('UPDATE caldav_sources SET is_default = 0 WHERE user_id = ? AND type = ?').run(req.user.id, itemType);
+  }
+
+  db.prepare(`
+    UPDATE caldav_sources SET
+      name = ?, type = ?, url = ?, username = ?, password = ?,
+      color = ?, is_default = ?, enabled = ?
+    WHERE id = ? AND user_id = ?
+  `).run(
+    name.trim(),
+    itemType,
+    url.trim(),
+    username || '',
+    password || '',
+    itemColor,
+    defaultVal,
+    enabledVal,
+    req.params.id,
+    req.user.id
+  );
+
+  // 若为默认源，联动更新 user_settings
+  if (defaultVal === 1) {
+    if (itemType === 'event') {
+      db.prepare('UPDATE user_settings SET caldav_url = ?, calendar_color = ? WHERE user_id = ?').run(url.trim(), itemColor, req.user.id);
+    } else {
+      db.prepare('UPDATE user_settings SET caldav_todo_url = ?, todo_color = ? WHERE user_id = ?').run(url.trim(), itemColor, req.user.id);
+    }
+  }
+
+  res.json({ success: true });
+});
+
+app.delete('/api/caldav/sources/:id', authenticateToken, (req: any, res: any) => {
+  db.prepare('DELETE FROM caldav_sources WHERE id = ? AND user_id = ?').run(req.params.id, req.user.id);
+  db.prepare('DELETE FROM events WHERE source_id = ? AND user_id = ?').run(req.params.id, req.user.id);
+  res.json({ success: true });
+});
+
+// CalDAV 真实连接测试接口 (支持测试任意单个或双 URL)
 app.post('/api/settings/caldav-test', authenticateToken, async (req: any, res: any) => {
   const { url, calendar_url, todo_url, username, password } = req.body;
   const testCal = (calendar_url || url || '').trim();
@@ -195,18 +291,19 @@ app.get('/api/events', authenticateToken, async (req: any, res: any) => {
 });
 
 app.post('/api/events', authenticateToken, async (req: any, res: any) => {
-  const { id, title, description, type, start_date, end_date, start_time, end_time, color, category } = req.body;
+  const { id, source_id, title, description, type, start_date, end_date, start_time, end_time, color, category } = req.body;
   // 统一使用 cal_ 前缀格式，与 CalDAV 同步拉取时的 ID 规范完全一致，彻底避免本地与同步产生两条相同记录
   const uid = `${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
   const eventId = id || `cal_${uid}`;
   const finalColor = color || (type === 'todo' ? '#3b82f6' : '#ef4444');
 
   db.prepare(`
-    INSERT INTO events (id, user_id, title, description, type, start_date, end_date, start_time, end_time, color, category)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO events (id, user_id, source_id, title, description, type, start_date, end_date, start_time, end_time, color, category)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     eventId,
     req.user.id,
+    source_id || '',
     title,
     description || '',
     type || 'event',
@@ -222,6 +319,7 @@ app.post('/api/events', authenticateToken, async (req: any, res: any) => {
   try {
     await pushEventToCalDAV(req.user.id, {
       id: eventId,
+      source_id: source_id || '',
       title,
       description,
       type: type || 'event',
@@ -240,14 +338,16 @@ app.post('/api/events', authenticateToken, async (req: any, res: any) => {
 });
 
 app.put('/api/events/:id', authenticateToken, async (req: any, res: any) => {
-  const { title, description, type, start_date, end_date, start_time, end_time, is_completed, color, category } = req.body;
+  const { source_id, title, description, type, start_date, end_date, start_time, end_time, is_completed, color, category } = req.body;
   db.prepare(`
     UPDATE events SET
+      source_id = COALESCE(?, source_id),
       title = ?, description = ?, type = ?, start_date = ?, end_date = ?,
       start_time = ?, end_time = ?, is_completed = ?, color = ?, category = ?,
       updated_at = CURRENT_TIMESTAMP
     WHERE id = ? AND user_id = ?
   `).run(
+    source_id || null,
     title,
     description,
     type,
@@ -266,6 +366,7 @@ app.put('/api/events/:id', authenticateToken, async (req: any, res: any) => {
   try {
     await pushEventToCalDAV(req.user.id, {
       id: req.params.id,
+      source_id: source_id || '',
       title,
       description,
       type,
@@ -284,12 +385,12 @@ app.put('/api/events/:id', authenticateToken, async (req: any, res: any) => {
 });
 
 app.delete('/api/events/:id', authenticateToken, async (req: any, res: any) => {
-  const existing = db.prepare('SELECT type FROM events WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id) as any;
+  const existing = db.prepare('SELECT type, source_id FROM events WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id) as any;
   db.prepare('DELETE FROM events WHERE id = ? AND user_id = ?').run(req.params.id, req.user.id);
 
   if (existing) {
     try {
-      await deleteEventFromCalDAV(req.user.id, req.params.id, existing.type);
+      await deleteEventFromCalDAV(req.user.id, req.params.id, existing.type, existing.source_id);
     } catch (e) {
       console.error('Delete from CalDAV error:', e);
     }

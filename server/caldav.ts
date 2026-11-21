@@ -446,62 +446,99 @@ async function fetchItemsFromUrl(urlStr: string, headers: Record<string, string>
   return items;
 }
 
-// 执行 CalDAV 同步并入库 (支持同时同步独立日历 URL 与待办 URL)
+// 执行 CalDAV 同步并入库 (支持多个日历与待办集合源)
 export async function syncCalDAVForUser(userId: number): Promise<CalDAVSyncResult> {
   const settings = db.prepare('SELECT * FROM user_settings WHERE user_id = ?').get(userId) as any;
-  if (!settings || (!settings.caldav_url && !settings.caldav_todo_url)) {
-    return { success: false, count: 0, message: '尚未配置 CalDAV 服务器 URL' };
-  }
 
-  const calUrl = (settings.caldav_url || '').trim();
-  const todoUrl = (settings.caldav_todo_url || '').trim();
-  const username = settings.caldav_user || '';
-  const password = settings.caldav_password || '';
-  const calendarColor = settings.calendar_color || '#ef4444';
-  const todoColor = settings.todo_color || '#3b82f6';
+  // 查询当前用户所有启用的 CalDAV 集合源
+  let sources = db.prepare('SELECT * FROM caldav_sources WHERE user_id = ? AND enabled = 1 ORDER BY created_at ASC').all(userId) as any[];
 
-  const headers: Record<string, string> = {
-    'User-Agent': 'WebCalendar/1.0'
-  };
-  if (username && password) {
-    const basic = Buffer.from(`${username}:${password}`).toString('base64');
-    headers['Authorization'] = `Basic ${basic}`;
-  }
-
-  const allParsedItems: ParsedItem[] = [];
-
-  // 1. 同步日历集合
-  if (calUrl) {
-    const calItems = await fetchItemsFromUrl(calUrl, headers);
-    // 如果同时配置了专门的待办 URL，则日历集合中过滤保留 event；若未配待办 URL 则保留全部
-    if (todoUrl) {
-      allParsedItems.push(...calItems.filter(i => i.type === 'event'));
-    } else {
-      allParsedItems.push(...calItems);
+  // 兜底兼容：若集合源表尚空，但旧设置中有 URL，则自动补齐默认集合源
+  if (sources.length === 0 && settings) {
+    if (settings.caldav_url && settings.caldav_url.trim()) {
+      db.prepare(`
+        INSERT INTO caldav_sources (id, user_id, name, type, url, username, password, color, is_default, enabled)
+        VALUES (?, ?, '工作日历', 'event', ?, ?, ?, ?, 1, 1)
+      `).run(
+        `src_cal_${userId}`,
+        userId,
+        settings.caldav_url.trim(),
+        settings.caldav_user || '',
+        settings.caldav_password || '',
+        settings.calendar_color || '#ef4444'
+      );
     }
+    if (settings.caldav_todo_url && settings.caldav_todo_url.trim()) {
+      db.prepare(`
+        INSERT INTO caldav_sources (id, user_id, name, type, url, username, password, color, is_default, enabled)
+        VALUES (?, ?, '日常待办', 'todo', ?, ?, ?, ?, 1, 1)
+      `).run(
+        `src_todo_${userId}`,
+        userId,
+        settings.caldav_todo_url.trim(),
+        settings.caldav_user || '',
+        settings.caldav_password || '',
+        settings.todo_color || '#3b82f6'
+      );
+    }
+    sources = db.prepare('SELECT * FROM caldav_sources WHERE user_id = ? AND enabled = 1 ORDER BY created_at ASC').all(userId) as any[];
   }
 
-  // 2. 同步待办集合
-  if (todoUrl) {
-    const todoItems = await fetchItemsFromUrl(todoUrl, headers);
-    // 从待办集合中拉取，若未标记为 todo 则强制标记为 todo
-    for (const item of todoItems) {
-      item.type = 'todo';
-      allParsedItems.push(item);
+  if (sources.length === 0) {
+    return { success: false, count: 0, message: '尚未配置任何 CalDAV 日历或待办集合' };
+  }
+
+  const allParsedItems: (ParsedItem & { sourceId: string; sourceColor: string })[] = [];
+
+  // 遍历所有已配置的集合源，分别拉取对应事件/待办
+  for (const src of sources) {
+    const urlStr = (src.url || '').trim();
+    if (!urlStr) continue;
+
+    const username = src.username || settings?.caldav_user || '';
+    const password = src.password || settings?.caldav_password || '';
+
+    const headers: Record<string, string> = {
+      'User-Agent': 'WebCalendar/1.0'
+    };
+    if (username && password) {
+      const basic = Buffer.from(`${username}:${password}`).toString('base64');
+      headers['Authorization'] = `Basic ${basic}`;
+    }
+
+    try {
+      const items = await fetchItemsFromUrl(urlStr, headers);
+      for (const item of items) {
+        // 根据集合源类型校准事项类型
+        if (src.type === 'todo') {
+          item.type = 'todo';
+        } else if (src.type === 'event') {
+          item.type = 'event';
+        }
+
+        allParsedItems.push({
+          ...item,
+          sourceId: src.id,
+          sourceColor: src.color
+        });
+      }
+    } catch (e: any) {
+      console.error(`拉取集合 [${src.name}] 失败:`, e);
     }
   }
 
   if (allParsedItems.length === 0) {
-    return { success: true, count: 0, message: 'CalDAV 连接正常，日历与待办集合中暂无事项' };
+    return { success: true, count: 0, message: 'CalDAV 连接正常，所有集合中暂无事项' };
   }
 
   const insertOrUpdate = db.prepare(`
     INSERT INTO events (
-      id, user_id, title, description, type, start_date, end_date,
+      id, user_id, source_id, title, description, type, start_date, end_date,
       start_time, end_time, is_completed, color, category, updated_at
     ) VALUES (
-      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP
     ) ON CONFLICT(id) DO UPDATE SET
+      source_id = excluded.source_id,
       title = excluded.title,
       description = excluded.description,
       type = excluded.type,
@@ -515,17 +552,18 @@ export async function syncCalDAVForUser(userId: number): Promise<CalDAVSyncResul
       updated_at = CURRENT_TIMESTAMP
   `);
 
-  const runSyncTransaction = db.transaction((items: ParsedItem[]) => {
+  const runSyncTransaction = db.transaction((items: (ParsedItem & { sourceId: string; sourceColor: string })[]) => {
     // 同步前清除旧 CalDAV 缓存以及历史遗留的 evt_ 或 local- 重复项，确保 Radicale 为唯一权威源杜绝双重主键冲突
     db.prepare("DELETE FROM events WHERE user_id = ? AND (id LIKE 'cal_%' OR id LIKE 'evt_%' OR id LIKE 'local-%')").run(userId);
 
     let saved = 0;
     for (const item of items) {
       const dbId = item.uid.startsWith('cal_') ? item.uid : `cal_${item.uid}`;
-      const color = item.type === 'todo' ? todoColor : calendarColor;
+      const color = item.sourceColor || (item.type === 'todo' ? '#3b82f6' : '#ef4444');
       insertOrUpdate.run(
         dbId,
         userId,
+        item.sourceId || '',
         item.title,
         item.description,
         item.type,
@@ -547,7 +585,7 @@ export async function syncCalDAVForUser(userId: number): Promise<CalDAVSyncResul
   return {
     success: true,
     count,
-    message: `成功同步 ${count} 条 Radicale 日历与待办事项`
+    message: `成功同步 ${count} 条日历与待办事项 (来自 ${sources.length} 个集合)`
   };
 }
 
@@ -561,26 +599,39 @@ function formatICalDate(dateStr: string, timeStr?: string): string {
   return `${cleanDate}T${cleanTime}`;
 }
 
-// 将单个日程或待办推送到 Radicale CalDAV 服务器 (严格按类型分流到对应集合)
+// 将单个日程或待办推送到 Radicale CalDAV 服务器 (支持多集合分流)
 export async function pushEventToCalDAV(userId: number, item: any): Promise<{ success: boolean; message?: string }> {
   const settings = db.prepare('SELECT * FROM user_settings WHERE user_id = ?').get(userId) as any;
-  if (!settings) return { success: false, message: '未配置用户设置' };
-
   const isTodo = item.type === 'todo';
-  // 严格区分：日程 (event) 只能推送到 caldav_url (工作日历)；待办 (todo) 只能推送到 caldav_todo_url (日常待办)
-  // 严禁将待办回退推送到工作日历集合！
-  const targetUrlStr = isTodo
-    ? (settings.caldav_todo_url || '').trim()
-    : (settings.caldav_url || '').trim();
+
+  // 1. 优先通过 item.source_id 查找目标集合源
+  let source: any = null;
+  if (item.source_id) {
+    source = db.prepare('SELECT * FROM caldav_sources WHERE id = ? AND user_id = ?').get(item.source_id, userId);
+  }
+  // 2. 若未指定，则查询该类型的默认启用集合源
+  if (!source) {
+    source = db.prepare('SELECT * FROM caldav_sources WHERE user_id = ? AND type = ? AND is_default = 1 AND enabled = 1').get(userId, isTodo ? 'todo' : 'event');
+  }
+  // 3. 若无默认，则取该类型的任意启用集合源
+  if (!source) {
+    source = db.prepare('SELECT * FROM caldav_sources WHERE user_id = ? AND type = ? AND enabled = 1 ORDER BY is_default DESC, created_at ASC LIMIT 1').get(userId, isTodo ? 'todo' : 'event');
+  }
+
+  // 4. 兼容旧版 user_settings URL
+  let targetUrlStr = source?.url ? source.url.trim() : '';
+  if (!targetUrlStr && settings) {
+    targetUrlStr = isTodo ? (settings.caldav_todo_url || '').trim() : (settings.caldav_url || '').trim();
+  }
 
   if (!targetUrlStr) {
-    const missingName = isTodo ? '“日常待办集合 URL”' : '“工作日历集合 URL”';
+    const missingName = isTodo ? '“待办集合 URL”' : '“日历集合 URL”';
     console.warn(`未配置${missingName}，已仅在本地数据库保存`);
     return { success: true, message: `未配置${missingName}，仅本地保存` };
   }
 
-  const username = settings.caldav_user || '';
-  const password = settings.caldav_password || '';
+  const username = source?.username || settings?.caldav_user || '';
+  const password = source?.password || settings?.caldav_password || '';
   const headers: Record<string, string> = {
     'User-Agent': 'WebCalendar/1.0',
     'Content-Type': 'text/calendar; charset=utf-8'
@@ -675,23 +726,33 @@ export async function pushEventToCalDAV(userId: number, item: any): Promise<{ su
   }
 }
 
-// 从 Radicale CalDAV 服务器删除指定事项 (严格分流到对应集合)
-export async function deleteEventFromCalDAV(userId: number, eventId: string, type: string): Promise<{ success: boolean; message?: string }> {
+// 从 Radicale CalDAV 服务器删除指定事项 (支持多集合分流)
+export async function deleteEventFromCalDAV(userId: number, eventId: string, type: string, sourceId?: string): Promise<{ success: boolean; message?: string }> {
   const settings = db.prepare('SELECT * FROM user_settings WHERE user_id = ?').get(userId) as any;
-  if (!settings) return { success: false, message: '未配置用户设置' };
-
   const isTodo = type === 'todo';
-  // 严格区分：日程从 caldav_url 删除，待办从 caldav_todo_url 删除
-  const targetUrlStr = isTodo
-    ? (settings.caldav_todo_url || '').trim()
-    : (settings.caldav_url || '').trim();
+
+  let source: any = null;
+  if (sourceId) {
+    source = db.prepare('SELECT * FROM caldav_sources WHERE id = ? AND user_id = ?').get(sourceId, userId);
+  }
+  if (!source) {
+    source = db.prepare('SELECT * FROM caldav_sources WHERE user_id = ? AND type = ? AND is_default = 1 AND enabled = 1').get(userId, isTodo ? 'todo' : 'event');
+  }
+  if (!source) {
+    source = db.prepare('SELECT * FROM caldav_sources WHERE user_id = ? AND type = ? AND enabled = 1 ORDER BY is_default DESC, created_at ASC LIMIT 1').get(userId, isTodo ? 'todo' : 'event');
+  }
+
+  let targetUrlStr = source?.url ? source.url.trim() : '';
+  if (!targetUrlStr && settings) {
+    targetUrlStr = isTodo ? (settings.caldav_todo_url || '').trim() : (settings.caldav_url || '').trim();
+  }
 
   if (!targetUrlStr) {
     return { success: true };
   }
 
-  const username = settings.caldav_user || '';
-  const password = settings.caldav_password || '';
+  const username = source?.username || settings?.caldav_user || '';
+  const password = source?.password || settings?.caldav_password || '';
   const headers: Record<string, string> = {
     'User-Agent': 'WebCalendar/1.0'
   };

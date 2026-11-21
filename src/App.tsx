@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { CalendarEvent } from './types';
+import { CalendarEvent, CalDAVSource } from './types';
 import { api, getToken, clearToken } from './api';
 import { Header } from './components/Header';
 import { SidebarRecentDays } from './components/SidebarRecentDays';
@@ -59,6 +59,16 @@ export const App: React.FC = () => {
   const [eventModalDate, setEventModalDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
   const [eventModalDefaultType, setEventModalDefaultType] = useState<'event' | 'todo'>('event');
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [sources, setSources] = useState<CalDAVSource[]>([]);
+
+  const loadSources = async () => {
+    try {
+      const list = await api.getCalDAVSources();
+      setSources(list);
+    } catch {
+      // 容错
+    }
+  };
 
   // 初始化加载
   useEffect(() => {
@@ -75,6 +85,7 @@ export const App: React.FC = () => {
         }
       }
       loadEvents(true);
+      loadSources();
     };
     initApp();
   }, []);
@@ -123,6 +134,7 @@ export const App: React.FC = () => {
     try {
       const data = await api.getEvents(true);
       setEvents(data);
+      await loadSources();
       showToast(`已刷新日历与待办，共 ${data.length} 项事项`);
     } catch (err: any) {
       console.error('刷新日程待办失败:', err);
@@ -342,6 +354,7 @@ export const App: React.FC = () => {
         initialEvent={editingEvent}
         defaultDate={eventModalDate}
         defaultType={eventModalDefaultType}
+        sources={sources}
       />
 
       <SettingsModal
@@ -351,13 +364,17 @@ export const App: React.FC = () => {
         onAuthSuccess={user => {
           setUsername(user);
           loadEvents(true);
+          loadSources();
         }}
         onLogout={() => {
           clearToken();
           setUsername(null);
           loadEvents();
         }}
-        onSyncSuccess={() => loadEvents(false)}
+        onSyncSuccess={() => {
+          loadEvents(false);
+          loadSources();
+        }}
       />
 
       {/* 轻量刷新与操作 Toast 提示 */}

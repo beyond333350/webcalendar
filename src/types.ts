@@ -1,8 +1,23 @@
 export type ItemType = 'event' | 'todo';
 
+export interface CalDAVSource {
+  id: string;
+  user_id?: number;
+  name: string;
+  type: ItemType;
+  url: string;
+  username?: string;
+  password?: string;
+  color: string;
+  is_default: number | boolean;
+  enabled: number | boolean;
+  created_at?: string;
+}
+
 export interface CalendarEvent {
   id: string;
   user_id?: number;
+  source_id?: string;
   title: string;
   description?: string;
   type: ItemType;

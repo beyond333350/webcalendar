@@ -35,6 +35,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS events (
     id TEXT PRIMARY KEY,
     user_id INTEGER NOT NULL,
+    source_id TEXT DEFAULT '',
     title TEXT NOT NULL,
     description TEXT,
     type TEXT NOT NULL CHECK(type IN ('event', 'todo')),
@@ -49,14 +50,35 @@ db.exec(`
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(user_id) REFERENCES users(id)
   );
+
+  CREATE TABLE IF NOT EXISTS caldav_sources (
+    id TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL CHECK(type IN ('event', 'todo')),
+    url TEXT NOT NULL,
+    username TEXT DEFAULT '',
+    password TEXT DEFAULT '',
+    color TEXT NOT NULL,
+    is_default INTEGER DEFAULT 0,
+    enabled INTEGER DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id)
+  );
 `);
 
 // 平滑迁移旧数据库表字段与纠正历史默认颜色
 try {
-  const columns = db.prepare("PRAGMA table_info(user_settings)").all() as any[];
-  const hasTodoUrl = columns.some((c: any) => c.name === 'caldav_todo_url');
+  const settingsCols = db.prepare("PRAGMA table_info(user_settings)").all() as any[];
+  const hasTodoUrl = settingsCols.some((c: any) => c.name === 'caldav_todo_url');
   if (!hasTodoUrl) {
     db.exec("ALTER TABLE user_settings ADD COLUMN caldav_todo_url TEXT DEFAULT ''");
+  }
+
+  const eventsCols = db.prepare("PRAGMA table_info(events)").all() as any[];
+  const hasSourceId = eventsCols.some((c: any) => c.name === 'source_id');
+  if (!hasSourceId) {
+    db.exec("ALTER TABLE events ADD COLUMN source_id TEXT DEFAULT ''");
   }
 
   // 修正历史默认颜色：日历为红色 #ef4444，待办为蓝色 #3b82f6
@@ -92,6 +114,42 @@ try {
           AND (e2.id = ('cal_' || events.id) OR (e2.title = events.title AND e2.start_date = events.start_date AND e2.type = events.type))
       );
   `);
+
+  // 自动将旧版单 URL 设置无缝平滑迁移至多集合表 caldav_sources 中
+  const settingsList = db.prepare("SELECT * FROM user_settings").all() as any[];
+  for (const st of settingsList) {
+    const existingCount = (db.prepare("SELECT count(*) as count FROM caldav_sources WHERE user_id = ?").get(st.user_id) as any)?.count || 0;
+    if (existingCount === 0) {
+      if (st.caldav_url && st.caldav_url.trim()) {
+        db.prepare(`
+          INSERT INTO caldav_sources (id, user_id, name, type, url, username, password, color, is_default, enabled)
+          VALUES (?, ?, ?, 'event', ?, ?, ?, ?, 1, 1)
+        `).run(
+          `src_cal_${st.user_id}`,
+          st.user_id,
+          '工作日历',
+          st.caldav_url.trim(),
+          st.caldav_user || '',
+          st.caldav_password || '',
+          st.calendar_color || '#ef4444'
+        );
+      }
+      if (st.caldav_todo_url && st.caldav_todo_url.trim()) {
+        db.prepare(`
+          INSERT INTO caldav_sources (id, user_id, name, type, url, username, password, color, is_default, enabled)
+          VALUES (?, ?, ?, 'todo', ?, ?, ?, ?, 1, 1)
+        `).run(
+          `src_todo_${st.user_id}`,
+          st.user_id,
+          '日常待办',
+          st.caldav_todo_url.trim(),
+          st.caldav_user || '',
+          st.caldav_password || '',
+          st.todo_color || '#3b82f6'
+        );
+      }
+    }
+  }
 } catch (e) {
   // 忽略已存在或初次创建错误
 }

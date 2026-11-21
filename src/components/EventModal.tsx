@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { CalendarEvent, ItemType } from '../types';
+import { CalendarEvent, ItemType, CalDAVSource } from '../types';
 import { X, Calendar as CalendarIcon, CheckSquare } from 'lucide-react';
 
 interface EventModalProps {
@@ -9,6 +9,7 @@ interface EventModalProps {
   initialEvent?: CalendarEvent | null;
   defaultDate?: string;
   defaultType?: ItemType;
+  sources?: CalDAVSource[];
 }
 
 const PRESET_COLORS = [
@@ -28,9 +29,11 @@ export const EventModal: React.FC<EventModalProps> = ({
   onSave,
   initialEvent,
   defaultDate,
-  defaultType = 'event'
+  defaultType = 'event',
+  sources = []
 }) => {
   const [type, setType] = useState<ItemType>(defaultType);
+  const [sourceId, setSourceId] = useState<string>('');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [startDate, setStartDate] = useState(defaultDate || new Date().toISOString().split('T')[0]);
@@ -44,6 +47,7 @@ export const EventModal: React.FC<EventModalProps> = ({
     if (initialEvent) {
       const currentType = initialEvent.type || 'event';
       setType(currentType);
+      setSourceId(initialEvent.source_id || '');
       setTitle(initialEvent.title || '');
       setDescription(initialEvent.description || '');
       setStartDate(initialEvent.start_date || defaultDate || new Date().toISOString().split('T')[0]);
@@ -59,12 +63,24 @@ export const EventModal: React.FC<EventModalProps> = ({
       setStartDate(defaultDate || new Date().toISOString().split('T')[0]);
       setStartTime('');
       setEndTime('');
-      setColor(currentType === 'todo' ? '#3b82f6' : '#ef4444');
       setCategory('默认');
+
+      // 自动选中该类型的默认或首个集合源并联动其颜色
+      const matching = sources.filter(s => s.type === currentType && s.enabled);
+      const defaultSrc = matching.find(s => s.is_default) || matching[0];
+      if (defaultSrc) {
+        setSourceId(defaultSrc.id);
+        setColor(defaultSrc.color || (currentType === 'todo' ? '#3b82f6' : '#ef4444'));
+      } else {
+        setSourceId('');
+        setColor(currentType === 'todo' ? '#3b82f6' : '#ef4444');
+      }
     }
-  }, [initialEvent, defaultDate, defaultType, isOpen]);
+  }, [initialEvent, defaultDate, defaultType, sources, isOpen]);
 
   if (!isOpen) return null;
+
+  const matchingSources = sources.filter(s => s.type === type && s.enabled);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -74,6 +90,7 @@ export const EventModal: React.FC<EventModalProps> = ({
     try {
       await onSave({
         id: initialEvent?.id,
+        source_id: sourceId || undefined,
         title: title.trim(),
         description: description.trim(),
         type,
@@ -99,7 +116,7 @@ export const EventModal: React.FC<EventModalProps> = ({
           <div className="flex items-center space-x-2">
             <span className={`w-2 h-2 rounded-full ${type === 'todo' ? 'bg-blue-500' : 'bg-red-500'}`} />
             <h3 className="text-sm font-semibold text-zinc-100">
-              {initialEvent ? '编辑事项' : (type === 'todo' ? '新建日常待办（同步至日常待办）' : '新建日历日程（同步至工作日历）')}
+              {initialEvent ? '编辑事项' : (type === 'todo' ? '新建日常待办' : '新建日历日程')}
             </h3>
           </div>
           <button
@@ -118,7 +135,15 @@ export const EventModal: React.FC<EventModalProps> = ({
               type="button"
               onClick={() => {
                 setType('event');
-                if (color === '#3b82f6') setColor('#ef4444');
+                const matching = sources.filter(s => s.type === 'event' && s.enabled);
+                const defaultSrc = matching.find(s => s.is_default) || matching[0];
+                if (defaultSrc) {
+                  setSourceId(defaultSrc.id);
+                  setColor(defaultSrc.color || '#ef4444');
+                } else {
+                  setSourceId('');
+                  setColor('#ef4444');
+                }
               }}
               className={`py-1.5 text-xs font-medium rounded-md flex items-center justify-center space-x-1.5 transition ${
                 type === 'event'
@@ -133,7 +158,15 @@ export const EventModal: React.FC<EventModalProps> = ({
               type="button"
               onClick={() => {
                 setType('todo');
-                if (color === '#ef4444') setColor('#3b82f6');
+                const matching = sources.filter(s => s.type === 'todo' && s.enabled);
+                const defaultSrc = matching.find(s => s.is_default) || matching[0];
+                if (defaultSrc) {
+                  setSourceId(defaultSrc.id);
+                  setColor(defaultSrc.color || '#3b82f6');
+                } else {
+                  setSourceId('');
+                  setColor('#3b82f6');
+                }
               }}
               className={`py-1.5 text-xs font-medium rounded-md flex items-center justify-center space-x-1.5 transition ${
                 type === 'todo'
@@ -145,6 +178,32 @@ export const EventModal: React.FC<EventModalProps> = ({
               <span>待办任务 (Todo)</span>
             </button>
           </div>
+
+          {/* 所属日历/待办集合下拉选择 */}
+          {matchingSources.length > 0 && (
+            <div>
+              <label className="block text-xs font-medium text-zinc-400 mb-1 flex items-center justify-between">
+                <span>目标集合 (CalDAV 同步目标)</span>
+                <span className="text-[10px] text-zinc-500">将推送到选中的服务集合</span>
+              </label>
+              <select
+                value={sourceId}
+                onChange={e => {
+                  const selId = e.target.value;
+                  setSourceId(selId);
+                  const sel = sources.find(s => s.id === selId);
+                  if (sel) setColor(sel.color);
+                }}
+                className="w-full px-2.5 py-1.5 text-xs bg-zinc-900 border border-zinc-700/80 rounded-md text-zinc-100 focus:outline-hidden focus:border-blue-500"
+              >
+                {matchingSources.map(s => (
+                  <option key={s.id} value={s.id}>
+                    {s.name} {s.is_default ? '(默认)' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* 标题 */}
           <div>

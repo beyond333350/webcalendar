@@ -1,4 +1,4 @@
-import { CalendarEvent, UserSettings, UserAuth } from './types';
+import { CalendarEvent, UserSettings, UserAuth, CalDAVSource } from './types';
 
 const API_BASE = '/api';
 
@@ -194,6 +194,50 @@ export const api = {
         message: `同步失败: ${e.message || '网络连接异常，请确认后端服务已启动'}`
       };
     }
+  },
+
+  // CalDAV 集合源多列表管理
+  async getCalDAVSources(): Promise<CalDAVSource[]> {
+    const res = await fetch(`${API_BASE}/caldav/sources`, {
+      headers: getHeaders()
+    });
+    if (!res.ok) throw new Error('获取 CalDAV 集合列表失败');
+    return res.json();
+  },
+
+  async createCalDAVSource(source: Partial<CalDAVSource>): Promise<{ id: string; success: boolean }> {
+    const res = await fetch(`${API_BASE}/caldav/sources`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(source)
+    });
+    if (!res.ok) {
+      const data = await parseResponseJson(res, '添加集合失败');
+      throw new Error(data.error || data.message || '添加集合失败');
+    }
+    return res.json();
+  },
+
+  async updateCalDAVSource(id: string, source: Partial<CalDAVSource>): Promise<{ success: boolean }> {
+    const res = await fetch(`${API_BASE}/caldav/sources/${id}`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify(source)
+    });
+    if (!res.ok) {
+      const data = await parseResponseJson(res, '更新集合失败');
+      throw new Error(data.error || data.message || '更新集合失败');
+    }
+    return res.json();
+  },
+
+  async deleteCalDAVSource(id: string): Promise<{ success: boolean }> {
+    const res = await fetch(`${API_BASE}/caldav/sources/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+    if (!res.ok) throw new Error('删除集合失败');
+    return res.json();
   },
 
   // 天气查询
