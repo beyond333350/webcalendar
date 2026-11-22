@@ -248,26 +248,27 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="bg-[#1e1e22] border border-zinc-800 rounded-xl w-full max-w-2xl shadow-2xl overflow-hidden select-none animate-in fade-in zoom-in-95 duration-150 flex flex-col max-h-[88vh]">
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+      <div className="bg-[#1e1e22] border border-zinc-800 rounded-xl w-full max-w-2xl shadow-2xl overflow-hidden select-none animate-in fade-in zoom-in-95 duration-150 flex flex-col max-h-[92vh] sm:max-h-[88vh]">
         {/* 对话框头部 */}
-        <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
+        <div className="p-3.5 sm:p-4 border-b border-zinc-800 flex items-center justify-between flex-shrink-0">
           <div className="flex items-center space-x-2">
             <span className="text-sm font-semibold text-zinc-100">应用设置与账号</span>
           </div>
           <button
             onClick={onClose}
-            className="p-1 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 rounded-md transition"
+            className="p-1.5 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 rounded-md transition"
+            aria-label="关闭"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Tab 导航 */}
-        <div className="flex border-b border-zinc-800 bg-zinc-900/60 px-4 pt-2 space-x-2">
+        {/* Tab 导航 (支持横向滑动) */}
+        <div className="flex border-b border-zinc-800 bg-zinc-900/60 px-3 sm:px-4 pt-2 space-x-2 overflow-x-auto whitespace-nowrap flex-shrink-0">
           <button
             onClick={() => setActiveTab('profile')}
-            className={`pb-2 text-xs font-medium border-b-2 flex items-center space-x-1.5 transition ${
+            className={`pb-2 px-1 text-xs font-medium border-b-2 flex items-center space-x-1.5 transition flex-shrink-0 ${
               activeTab === 'profile'
                 ? 'border-blue-500 text-blue-400'
                 : 'border-transparent text-zinc-400 hover:text-zinc-200'
@@ -278,18 +279,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </button>
           <button
             onClick={() => setActiveTab('caldav')}
-            className={`pb-2 text-xs font-medium border-b-2 flex items-center space-x-1.5 transition ${
+            className={`pb-2 px-1 text-xs font-medium border-b-2 flex items-center space-x-1.5 transition flex-shrink-0 ${
               activeTab === 'caldav'
                 ? 'border-blue-500 text-blue-400'
                 : 'border-transparent text-zinc-400 hover:text-zinc-200'
             }`}
           >
             <RefreshCw className="w-3.5 h-3.5" />
-            <span>Radicale CalDAV 同步</span>
+            <span>Radicale CalDAV 同步 ({sources.length})</span>
           </button>
           <button
             onClick={() => setActiveTab('weather')}
-            className={`pb-2 text-xs font-medium border-b-2 flex items-center space-x-1.5 transition ${
+            className={`pb-2 px-1 text-xs font-medium border-b-2 flex items-center space-x-1.5 transition flex-shrink-0 ${
               activeTab === 'weather'
                 ? 'border-blue-500 text-blue-400'
                 : 'border-transparent text-zinc-400 hover:text-zinc-200'
@@ -301,7 +302,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         </div>
 
         {/* Tab 核心内容 */}
-        <div className="p-4 flex-1 overflow-y-auto space-y-4">
+        <div className="p-3.5 sm:p-4 flex-1 overflow-y-auto space-y-4">
           {activeTab === 'profile' && (
             <div>
               {username ? (

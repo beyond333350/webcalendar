@@ -109,10 +109,10 @@ export const EventModal: React.FC<EventModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="bg-[#1e1e22] border border-zinc-800 rounded-xl w-full max-w-md shadow-2xl overflow-hidden select-none animate-in fade-in zoom-in-95 duration-150">
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+      <div className="bg-[#1e1e22] border border-zinc-800 rounded-xl w-full max-w-md shadow-2xl overflow-hidden select-none animate-in fade-in zoom-in-95 duration-150 flex flex-col max-h-[92vh]">
         {/* 对话框头部 */}
-        <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
+        <div className="p-3.5 sm:p-4 border-b border-zinc-800 flex items-center justify-between flex-shrink-0">
           <div className="flex items-center space-x-2">
             <span className={`w-2 h-2 rounded-full ${type === 'todo' ? 'bg-blue-500' : 'bg-red-500'}`} />
             <h3 className="text-sm font-semibold text-zinc-100">
@@ -121,14 +121,15 @@ export const EventModal: React.FC<EventModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="p-1 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 rounded-md transition"
+            className="p-1.5 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 rounded-md transition"
+            aria-label="关闭"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* 表单 */}
-        <form onSubmit={handleSubmit} className="p-4 space-y-4">
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-3.5 sm:p-4 space-y-3.5 sm:space-y-4">
           {/* 类型切换 */}
           <div className="grid grid-cols-2 gap-2 bg-zinc-900 p-1 rounded-lg border border-zinc-800">
             <button
@@ -221,7 +222,7 @@ export const EventModal: React.FC<EventModalProps> = ({
           </div>
 
           {/* 日期与时间 */}
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <div>
               <label className="block text-xs font-medium text-zinc-400 mb-1">日期</label>
               <input
@@ -304,19 +305,19 @@ export const EventModal: React.FC<EventModalProps> = ({
             />
           </div>
 
-          {/* 底部按钮 */}
-          <div className="pt-2 flex items-center justify-end space-x-2">
+          {/* 底部按钮栏 (置于表单底部或固定位置) */}
+          <div className="pt-2 sm:pt-3 border-t border-zinc-800/80 flex items-center justify-end space-x-2">
             <button
               type="button"
               onClick={onClose}
-              className="px-3 py-1.5 text-xs rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition"
+              className="min-h-[38px] px-3.5 py-1.5 text-xs rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition"
             >
               取消
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="px-4 py-1.5 text-xs font-medium rounded-md bg-blue-600 hover:bg-blue-500 text-white shadow-sm transition disabled:opacity-50"
+              className="min-h-[38px] px-4 py-1.5 text-xs font-medium rounded-md bg-blue-600 hover:bg-blue-500 text-white shadow-sm transition disabled:opacity-50"
             >
               {isSubmitting ? '保存中...' : '保存'}
             </button>

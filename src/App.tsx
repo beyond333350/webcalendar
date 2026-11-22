@@ -28,8 +28,11 @@ export const App: React.FC = () => {
     setTimeout(() => setToastMessage(null), 3000);
   };
 
-  // 左侧栏折叠状态 (支持保存到 localStorage，默认展开)
+  // 左侧栏折叠状态 (支持保存到 localStorage，移动端与平板小屏默认收起，桌面默认展开)
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState<boolean>(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      return false;
+    }
     const saved = localStorage.getItem('webcalendar_left_sidebar_open');
     return saved !== null ? saved === 'true' : true;
   });
@@ -281,12 +284,27 @@ export const App: React.FC = () => {
         onRefresh={handleRefresh}
         isRefreshing={isRefreshing}
         username={username}
+        onToggleLeftSidebar={handleToggleLeftSidebar}
+        isLeftSidebarOpen={isLeftSidebarOpen}
       />
 
       {/* 主体三栏布局 */}
       <div className="flex flex-1 overflow-hidden relative">
-        {/* 左侧栏：近 3 天待办日程 (支持折叠与拖拽调节宽度) */}
-        <div className="relative flex h-full flex-shrink-0">
+        {/* 移动端与平板端左侧栏半透明暗黑遮罩 */}
+        {isLeftSidebarOpen && (
+          <div
+            onClick={handleToggleLeftSidebar}
+            className="fixed inset-0 bg-black/60 backdrop-blur-xs z-30 lg:hidden transition-opacity"
+            aria-label="关闭侧边栏"
+          />
+        )}
+
+        {/* 左侧栏：近 3 天待办日程 (支持移动端浮层抽屉与桌面端折叠/拖拽调节宽度) */}
+        <div className={`flex h-full flex-shrink-0 transition-transform duration-300 ease-in-out ${
+          isLeftSidebarOpen
+            ? 'fixed inset-y-0 left-0 z-40 w-72 sm:w-80 shadow-2xl lg:relative lg:inset-auto lg:z-auto lg:shadow-none lg:w-auto translate-x-0'
+            : 'fixed inset-y-0 left-0 z-40 -translate-x-full pointer-events-none lg:relative lg:inset-auto lg:z-auto lg:translate-x-0 lg:w-0'
+        }`}>
           <SidebarRecentDays
             events={events}
             width={sidebarWidth}
@@ -297,24 +315,24 @@ export const App: React.FC = () => {
             onOpenCreateForDate={(dateStr, type) => handleOpenCreate(dateStr, type)}
           />
 
-          {/* 边缘向左/向右切换小箭头按钮 */}
+          {/* 桌面端边缘向左/向右切换小箭头按钮 */}
           <button
             onClick={handleToggleLeftSidebar}
-            className="absolute -right-3.5 top-1/2 -translate-y-1/2 z-20 flex items-center justify-center w-4 h-12 bg-[#222225] hover:bg-zinc-700 text-zinc-400 hover:text-zinc-100 border border-zinc-700/80 rounded-r-md shadow-md transition"
+            className="hidden lg:flex absolute -right-3.5 top-1/2 -translate-y-1/2 z-20 items-center justify-center w-4 h-12 bg-[#222225] hover:bg-zinc-700 text-zinc-400 hover:text-zinc-100 border border-zinc-700/80 rounded-r-md shadow-md transition"
             title={isLeftSidebarOpen ? '收起左侧近3天日程 (向左收起)' : '展开左侧近3天日程 (向右展开)'}
           >
             {isLeftSidebarOpen ? <ChevronLeft className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
           </button>
         </div>
 
-        {/* 左侧与中间区域可拖拽分割条 (仅在展开时显示) */}
+        {/* 左侧与中间区域可拖拽分割条 (仅在桌面大屏展开时显示) */}
         {isLeftSidebarOpen && (
           <div
             onMouseDown={e => {
               e.preventDefault();
               setIsDragging(true);
             }}
-            className={`w-1.5 cursor-col-resize z-10 transition-colors flex items-center justify-center select-none group border-x border-zinc-900/50 ${
+            className={`hidden lg:flex w-1.5 cursor-col-resize z-10 transition-colors items-center justify-center select-none group border-x border-zinc-900/50 ${
               isDragging ? 'bg-blue-500' : 'bg-[#222225] hover:bg-blue-500/70'
             }`}
             title="按住拖拽调节左右区域大小"

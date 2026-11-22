@@ -41,10 +41,10 @@ export const MonthView: React.FC<MonthViewProps> = ({
   const getWeatherIcon = (date: Date) => {
     const day = date.getDate();
     const mod = day % 4;
-    if (mod === 0) return <span title="晴"><Sun className="w-3.5 h-3.5 text-amber-400" /></span>;
-    if (mod === 1) return <span title="多云"><Cloud className="w-3.5 h-3.5 text-zinc-400" /></span>;
-    if (mod === 2) return <span title="小雨"><CloudRain className="w-3.5 h-3.5 text-blue-400" /></span>;
-    return <span title="雪"><CloudSnow className="w-3.5 h-3.5 text-indigo-300" /></span>;
+    if (mod === 0) return <span title="晴"><Sun className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-400" /></span>;
+    if (mod === 1) return <span title="多云"><Cloud className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-zinc-400" /></span>;
+    if (mod === 2) return <span title="小雨"><CloudRain className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-blue-400" /></span>;
+    return <span title="雪"><CloudSnow className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-indigo-300" /></span>;
   };
 
   return (
@@ -54,7 +54,7 @@ export const MonthView: React.FC<MonthViewProps> = ({
         {weekDays.map((day, idx) => (
           <div
             key={day}
-            className={`py-2 text-center text-xs font-semibold ${
+            className={`py-1 sm:py-2 text-center text-[11px] sm:text-xs font-semibold ${
               idx >= 5 ? 'text-zinc-400' : 'text-zinc-300'
             }`}
           >
@@ -87,17 +87,17 @@ export const MonthView: React.FC<MonthViewProps> = ({
             <div
               key={dateStr}
               onClick={() => onSelectDate(dateStr)}
-              className={`border-t border-l border-zinc-800 p-1.5 flex flex-col transition cursor-pointer relative ${
+              className={`border-t border-l border-zinc-800 p-1 sm:p-1.5 flex flex-col transition cursor-pointer relative active:bg-zinc-800/80 ${
                 !isCurrentMonth ? 'bg-[#151518]/60 text-zinc-600' : 'bg-[#18181b] hover:bg-zinc-800/40'
               } ${isSelected ? 'ring-1 ring-blue-500 bg-blue-950/20' : ''}`}
             >
               {/* 格子顶部：天气与月日 (例如 9月11日显示 11/9) */}
-              <div className="flex items-center justify-between mb-1">
-                <span className="opacity-80 hover:opacity-100 transition">
+              <div className="flex items-center justify-between mb-0.5 sm:mb-1">
+                <span className="opacity-80 hover:opacity-100 transition flex items-center">
                   {getWeatherIcon(day)}
                 </span>
                 <span
-                  className={`px-1.5 py-0.5 rounded text-xs font-semibold leading-none ${
+                  className={`px-1 sm:px-1.5 py-0.5 rounded text-[10px] sm:text-xs font-semibold leading-none ${
                     isDayToday
                       ? 'bg-blue-600 text-white font-bold shadow-xs'
                       : isCurrentMonth
@@ -111,7 +111,7 @@ export const MonthView: React.FC<MonthViewProps> = ({
               </div>
 
               {/* 事件与待办胶囊药丸 */}
-              <div className="flex-1 overflow-hidden space-y-1">
+              <div className="flex-1 overflow-hidden space-y-0.5 sm:space-y-1">
                 {visibleEvents.map(event => {
                   const isDone = Boolean(event.is_completed);
                   const isTodo = event.type === 'todo';
@@ -124,7 +124,7 @@ export const MonthView: React.FC<MonthViewProps> = ({
                         e.stopPropagation();
                         onEditEvent(event);
                       }}
-                      className="px-1.5 py-0.5 rounded text-[11px] truncate flex items-center space-x-1 transition shadow-sm font-medium"
+                      className="px-1 sm:px-1.5 py-0.5 rounded text-[10px] sm:text-[11px] truncate flex items-center space-x-1 transition shadow-sm font-medium"
                       style={{
                         backgroundColor: `${itemColor}22`,
                         color: isTodo ? '#93c5fd' : '#fca5a5',
@@ -146,7 +146,7 @@ export const MonthView: React.FC<MonthViewProps> = ({
                       )}
 
                       {event.start_time && (
-                        <span className="text-[9px] opacity-80">{event.start_time}</span>
+                        <span className="text-[8px] sm:text-[9px] opacity-80 flex-shrink-0">{event.start_time}</span>
                       )}
                       <span className={`truncate ${isDone ? 'line-through opacity-60' : ''}`}>
                         {event.title}
@@ -156,7 +156,7 @@ export const MonthView: React.FC<MonthViewProps> = ({
                 })}
 
                 {hiddenCount > 0 && (
-                  <div className="text-[10px] text-zinc-500 px-1 font-medium">
+                  <div className="text-[9px] sm:text-[10px] text-zinc-500 px-0.5 sm:px-1 font-medium">
                     +{hiddenCount} 项更多
                   </div>
                 )}
