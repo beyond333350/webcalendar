@@ -9,11 +9,7 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - webcalendar_data:/app/data
+      - ./data:/app/data
     environment:
       - PORT=3000
       - JWT_SECRET=webcalendar-1panel-secret-2026
-
-volumes:
-  webcalendar_data:
-    driver: local

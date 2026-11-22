@@ -54,7 +54,7 @@ npm start
 ```bash
 docker compose up -d
 ```
-服务将在宿主机 `3000` 端口启动，数据持久化保存在 Docker 卷 `webcalendar_data` 中。
+服务将在宿主机 `3000` 端口启动，数据持久化保存在当前目录的 `./data` 文件夹中（在 1Panel 文件管理中可直接查看与备份 `calendar.db` 数据库）。
 
 ### 1Panel 面板一键部署
 1. 打开 1Panel 控制台，进入 **【容器】** -> **【编排】**。

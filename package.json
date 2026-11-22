@@ -9,7 +9,7 @@
     "client:dev": "vite",
     "client:build": "vite build",
     "server:dev": "tsx watch server/index.ts",
-    "server:build": "esbuild server/index.ts --bundle --platform=node --format=esm --outfile=dist/server.js --external:better-sqlite3 --external:bcryptjs",
+    "server:build": "esbuild server/index.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/server.js",
     "build": "npm run client:build && npm run server:build",
     "start": "NODE_ENV=production node dist/server.js"
   },
