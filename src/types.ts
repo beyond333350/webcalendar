@@ -48,6 +48,12 @@ export interface UserAuth {
   token: string;
   username: string;
   userId: number;
+  isAdmin?: boolean;
+  message?: string;
+}
+
+export interface SystemPublicConfig {
+  allow_registration: boolean;
 }
 
 export interface WeatherInfo {

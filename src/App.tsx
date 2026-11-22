@@ -1,20 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { CalendarEvent, CalDAVSource } from './types';
-import { api, getToken, clearToken } from './api';
+import { api, getToken, clearToken, getStoredIsAdmin } from './api';
 import { Header } from './components/Header';
 import { SidebarRecentDays } from './components/SidebarRecentDays';
 import { MonthView } from './components/MonthView';
 import { DayDrawer } from './components/DayDrawer';
 import { EventModal } from './components/EventModal';
 import { SettingsModal } from './components/SettingsModal';
+import { LoginScreen } from './components/LoginScreen';
 import { addMonths, subMonths, format } from 'date-fns';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 export const App: React.FC = () => {
+  const [token, setTokenState] = useState<string | null>(getToken());
+  const [username, setUsername] = useState<string | null>(localStorage.getItem('webcalendar_username'));
+  const [isAdmin, setIsAdmin] = useState<boolean>(getStoredIsAdmin());
+  const [isInitializing, setIsInitializing] = useState<boolean>(true);
+
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [selectedDate, setSelectedDate] = useState<string | null>(format(new Date(), 'yyyy-MM-dd'));
-  const [username, setUsername] = useState<string | null>(localStorage.getItem('webcalendar_username'));
 
   // 右侧抽屉默认折叠不显示
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -73,22 +78,31 @@ export const App: React.FC = () => {
     }
   };
 
-  // 初始化加载
+  // 初始化加载与鉴权检查（彻底去除 demo 自动登录）
   useEffect(() => {
     const initApp = async () => {
-      // 若无 token，自动创建或登录 demo 账户以保证开箱即用
-      if (!getToken()) {
-        try {
-          const auth = await api.login('demo', '123456').catch(async () => {
-            return await api.register('demo', '123456');
-          });
-          setUsername(auth.username);
-        } catch {
-          // 容错处理
-        }
+      const currentToken = getToken();
+      if (!currentToken) {
+        setTokenState(null);
+        setUsername(null);
+        setIsAdmin(false);
+        setIsInitializing(false);
+        return;
       }
-      loadEvents(true);
-      loadSources();
+
+      try {
+        const me = await api.getMe();
+        setUsername(me.username);
+        setIsAdmin(me.isAdmin);
+        await Promise.all([loadEvents(true), loadSources()]);
+      } catch {
+        clearToken();
+        setTokenState(null);
+        setUsername(null);
+        setIsAdmin(false);
+      } finally {
+        setIsInitializing(false);
+      }
     };
     initApp();
   }, []);
@@ -267,6 +281,42 @@ export const App: React.FC = () => {
     setIsEventModalOpen(true);
   };
 
+  const handleLogout = () => {
+    clearToken();
+    setTokenState(null);
+    setUsername(null);
+    setIsAdmin(false);
+    setEvents([]);
+    setSources([]);
+    setIsSettingsModalOpen(false);
+  };
+
+  if (isInitializing) {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-[#18181b] text-zinc-400">
+        <div className="flex flex-col items-center space-y-3">
+          <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+          <span className="text-xs">正在加载安全环境...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // 强制登录拦截：未登录用户展示全屏登录与注册卡片
+  if (!token || !username) {
+    return (
+      <LoginScreen
+        onLoginSuccess={auth => {
+          setTokenState(auth.token);
+          setUsername(auth.username);
+          setIsAdmin(Boolean(auth.isAdmin));
+          loadEvents(true);
+          loadSources();
+        }}
+      />
+    );
+  }
+
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#18181b] text-zinc-100">
       {/* 顶部标题栏与控制器 */}
@@ -379,16 +429,16 @@ export const App: React.FC = () => {
         isOpen={isSettingsModalOpen}
         onClose={() => setIsSettingsModalOpen(false)}
         username={username}
+        isAdmin={isAdmin}
         onAuthSuccess={user => {
           setUsername(user);
           loadEvents(true);
           loadSources();
         }}
-        onLogout={() => {
-          clearToken();
-          setUsername(null);
-          loadEvents();
+        onUsernameChanged={newU => {
+          setUsername(newU);
         }}
+        onLogout={handleLogout}
         onSyncSuccess={() => {
           loadEvents(false);
           loadSources();

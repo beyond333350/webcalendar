@@ -1,4 +1,4 @@
-import { CalendarEvent, UserSettings, UserAuth, CalDAVSource } from './types';
+import { CalendarEvent, UserSettings, UserAuth, CalDAVSource, SystemPublicConfig } from './types';
 
 const API_BASE = '/api';
 
@@ -10,10 +10,15 @@ export const setToken = (token: string) => {
   localStorage.setItem('webcalendar_token', token);
 };
 
+export const getStoredIsAdmin = (): boolean => {
+  return localStorage.getItem('webcalendar_is_admin') === 'true';
+};
+
 export const clearToken = () => {
   localStorage.removeItem('webcalendar_token');
   localStorage.removeItem('webcalendar_username');
   localStorage.removeItem('webcalendar_userid');
+  localStorage.removeItem('webcalendar_is_admin');
 };
 
 const getHeaders = () => {
@@ -43,6 +48,17 @@ async function parseResponseJson(res: Response, fallbackMessage: string): Promis
 }
 
 export const api = {
+  // 公开系统配置
+  async getPublicConfig(): Promise<SystemPublicConfig> {
+    try {
+      const res = await fetch(`${API_BASE}/system/public-config`);
+      if (!res.ok) return { allow_registration: true };
+      return await res.json();
+    } catch {
+      return { allow_registration: true };
+    }
+  },
+
   // 认证
   async register(username: string, password: string): Promise<UserAuth> {
     const res = await fetch(`${API_BASE}/auth/register`, {
@@ -58,6 +74,7 @@ export const api = {
     setToken(data.token);
     localStorage.setItem('webcalendar_username', data.username);
     localStorage.setItem('webcalendar_userid', String(data.userId));
+    localStorage.setItem('webcalendar_is_admin', data.isAdmin ? 'true' : 'false');
     return data;
   },
 
@@ -75,6 +92,37 @@ export const api = {
     setToken(data.token);
     localStorage.setItem('webcalendar_username', data.username);
     localStorage.setItem('webcalendar_userid', String(data.userId));
+    localStorage.setItem('webcalendar_is_admin', data.isAdmin ? 'true' : 'false');
+    return data;
+  },
+
+  async getMe(): Promise<{ userId: number; username: string; isAdmin: boolean }> {
+    const res = await fetch(`${API_BASE}/auth/me`, {
+      headers: getHeaders()
+    });
+    if (!res.ok) throw new Error('获取当前用户信息失败');
+    const data = await res.json();
+    localStorage.setItem('webcalendar_username', data.username);
+    localStorage.setItem('webcalendar_userid', String(data.userId));
+    localStorage.setItem('webcalendar_is_admin', data.isAdmin ? 'true' : 'false');
+    return data;
+  },
+
+  async updateUsername(newUsername: string): Promise<UserAuth> {
+    const res = await fetch(`${API_BASE}/auth/update-username`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ newUsername })
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || '修改用户名失败');
+    }
+    const data = await res.json();
+    setToken(data.token);
+    localStorage.setItem('webcalendar_username', data.username);
+    localStorage.setItem('webcalendar_userid', String(data.userId));
+    localStorage.setItem('webcalendar_is_admin', data.isAdmin ? 'true' : 'false');
     return data;
   },
 
@@ -87,6 +135,28 @@ export const api = {
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       throw new Error(data.error || '密码修改失败');
+    }
+    return res.json();
+  },
+
+  // 管理员专属设置
+  async getAdminSystemSettings(): Promise<{ allow_registration: boolean }> {
+    const res = await fetch(`${API_BASE}/admin/system-settings`, {
+      headers: getHeaders()
+    });
+    if (!res.ok) throw new Error('获取管理员系统设置失败');
+    return res.json();
+  },
+
+  async updateAdminSystemSettings(settings: { allow_registration: boolean }): Promise<{ success: boolean; allow_registration: boolean }> {
+    const res = await fetch(`${API_BASE}/admin/system-settings`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify(settings)
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || '保存系统设置失败');
     }
     return res.json();
   },

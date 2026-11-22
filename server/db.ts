@@ -1,6 +1,8 @@
+import 'dotenv/config';
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
+import bcrypt from 'bcryptjs';
 
 const dataDir = process.env.DATA_DIR || path.join(process.cwd(), 'data');
 if (!fs.existsSync(dataDir)) {
@@ -16,7 +18,13 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
+    is_admin INTEGER DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS system_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
   );
 
   CREATE TABLE IF NOT EXISTS user_settings (
@@ -69,6 +77,17 @@ db.exec(`
 
 // 平滑迁移旧数据库表字段与纠正历史默认颜色
 try {
+  const userCols = db.prepare("PRAGMA table_info(users)").all() as any[];
+  const hasIsAdmin = userCols.some((c: any) => c.name === 'is_admin');
+  if (!hasIsAdmin) {
+    db.exec("ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0");
+  }
+
+  // 初始化系统设置默认值（默认开启新用户注册）
+  db.exec(`
+    INSERT OR IGNORE INTO system_settings (key, value) VALUES ('allow_registration', '1');
+  `);
+
   const settingsCols = db.prepare("PRAGMA table_info(user_settings)").all() as any[];
   const hasTodoUrl = settingsCols.some((c: any) => c.name === 'caldav_todo_url');
   if (!hasTodoUrl) {
@@ -148,6 +167,23 @@ try {
           st.todo_color || '#3b82f6'
         );
       }
+    }
+  }
+
+  // 初始化超级管理员账号（从环境变量读取，不硬编码）
+  const adminUsername = process.env.ADMIN_USERNAME?.trim();
+  const adminPassword = process.env.ADMIN_PASSWORD?.trim();
+
+  if (adminUsername && adminPassword) {
+    const existing = db.prepare('SELECT id FROM users WHERE username = ?').get(adminUsername) as any;
+    if (!existing) {
+      const hash = bcrypt.hashSync(adminPassword, 10);
+      const res = db.prepare('INSERT INTO users (username, password_hash, is_admin) VALUES (?, ?, 1)').run(adminUsername, hash);
+      const userId = res.lastInsertRowid;
+      db.prepare('INSERT OR IGNORE INTO user_settings (user_id) VALUES (?)').run(userId);
+      console.log(`[Init] 超级管理员 "${adminUsername}" 初始化成功`);
+    } else {
+      db.prepare('UPDATE users SET is_admin = 1 WHERE id = ?').run(existing.id);
     }
   }
 } catch (e) {

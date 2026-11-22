@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { UserSettings, CalDAVSource } from '../types';
 import { api, clearToken } from '../api';
-import { X, User, Cloud, RefreshCw, KeyRound, LogOut, Check, AlertCircle, Plus, Trash2, Edit3, Calendar, CheckSquare, Link2, Star } from 'lucide-react';
+import { X, User, Cloud, RefreshCw, KeyRound, LogOut, Check, AlertCircle, Plus, Trash2, Edit3, Calendar, CheckSquare, Link2, Star, Shield, ToggleLeft, ToggleRight } from 'lucide-react';
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   username: string | null;
+  isAdmin?: boolean;
   onAuthSuccess: (username: string) => void;
   onLogout: () => void;
   onSyncSuccess?: () => void;
+  onUsernameChanged?: (newUsername: string) => void;
 }
 
 const PRESET_SOURCE_COLORS = [
@@ -27,11 +29,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
   onClose,
   username,
+  isAdmin,
   onAuthSuccess,
   onLogout,
-  onSyncSuccess
+  onSyncSuccess,
+  onUsernameChanged
 }) => {
-  const [activeTab, setActiveTab] = useState<'profile' | 'caldav' | 'weather'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'caldav' | 'weather' | 'admin'>('profile');
 
   // 认证状态表单
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
@@ -39,10 +43,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [authPassword, setAuthPassword] = useState('');
   const [authError, setAuthError] = useState('');
 
+  // 修改用户名表单
+  const [newUsername, setNewUsername] = useState('');
+  const [usernameMsg, setUsernameMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
   // 修改密码表单
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [pwdMsg, setPwdMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
+  // 管理员系统设置
+  const [allowRegistration, setAllowRegistration] = useState(true);
+  const [adminMsg, setAdminMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const [updatingAdmin, setUpdatingAdmin] = useState(false);
 
   // CalDAV 多集合源列表与全局设置
   const [settings, setSettings] = useState<Partial<UserSettings>>({
@@ -89,8 +102,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     if (isOpen && username) {
       api.getSettings().then(setSettings).catch(() => {});
       loadSources();
+      if (isAdmin) {
+        api.getAdminSystemSettings().then(res => {
+          setAllowRegistration(res.allow_registration);
+        }).catch(() => {});
+      }
     }
-  }, [isOpen, username]);
+  }, [isOpen, username, isAdmin]);
 
   if (!isOpen) return null;
 
@@ -108,6 +126,40 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setAuthPassword('');
     } catch (err: any) {
       setAuthError(err.message || '操作失败');
+    }
+  };
+
+  const handleUpdateUsername = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setUsernameMsg(null);
+    if (!newUsername.trim()) return;
+    try {
+      const res = await api.updateUsername(newUsername.trim());
+      setUsernameMsg({ text: res.message || '用户名修改成功', type: 'success' });
+      setNewUsername('');
+      if (onUsernameChanged) {
+        onUsernameChanged(res.username);
+      }
+    } catch (err: any) {
+      setUsernameMsg({ text: err.message || '修改用户名失败', type: 'error' });
+    }
+  };
+
+  const handleToggleRegistration = async () => {
+    setUpdatingAdmin(true);
+    setAdminMsg(null);
+    const nextVal = !allowRegistration;
+    try {
+      const res = await api.updateAdminSystemSettings({ allow_registration: nextVal });
+      setAllowRegistration(res.allow_registration);
+      setAdminMsg({
+        text: res.allow_registration ? '已开启新用户注册功能' : '已关闭新用户注册功能（暂停外部注册）',
+        type: 'success'
+      });
+    } catch (err: any) {
+      setAdminMsg({ text: err.message || '更新注册开关失败', type: 'error' });
+    } finally {
+      setUpdatingAdmin(false);
     }
   };
 
@@ -299,6 +351,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <Cloud className="w-3.5 h-3.5" />
             <span>天气集成</span>
           </button>
+          {isAdmin && (
+            <button
+              onClick={() => setActiveTab('admin')}
+              className={`pb-2 px-1 text-xs font-medium border-b-2 flex items-center space-x-1.5 transition flex-shrink-0 ${
+                activeTab === 'admin'
+                  ? 'border-blue-500 text-blue-400'
+                  : 'border-transparent text-zinc-400 hover:text-zinc-200'
+              }`}
+            >
+              <Shield className="w-3.5 h-3.5" />
+              <span>系统管理</span>
+            </button>
+          )}
         </div>
 
         {/* Tab 核心内容 */}
@@ -313,7 +378,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         {username[0].toUpperCase()}
                       </div>
                       <div>
-                        <div className="text-xs font-semibold text-zinc-100">{username}</div>
+                        <div className="text-xs font-semibold text-zinc-100 flex items-center space-x-1.5">
+                          <span>{username}</span>
+                          <span className={`text-[10px] px-1.5 py-0.2 rounded font-medium ${isAdmin ? 'bg-amber-950/60 text-amber-400 border border-amber-800/40' : 'bg-zinc-800 text-zinc-400'}`}>
+                            {isAdmin ? '超级管理员' : '标准用户'}
+                          </span>
+                        </div>
                         <div className="text-[10px] text-zinc-500">已登录账号</div>
                       </div>
                     </div>
@@ -325,6 +395,36 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <span>退出登录</span>
                     </button>
                   </div>
+
+                  {/* 修改用户名 */}
+                  <form onSubmit={handleUpdateUsername} className="p-3 rounded-lg bg-zinc-900 border border-zinc-800 space-y-3">
+                    <div className="text-xs font-semibold text-zinc-200 flex items-center space-x-1.5">
+                      <User className="w-3.5 h-3.5 text-zinc-400" />
+                      <span>修改用户名</span>
+                    </div>
+                    {usernameMsg && (
+                      <div className={`p-2 rounded text-xs ${usernameMsg.type === 'success' ? 'bg-emerald-950/40 text-emerald-400 border border-emerald-800/40' : 'bg-rose-950/40 text-rose-400 border border-rose-800/40'}`}>
+                        {usernameMsg.text}
+                      </div>
+                    )}
+                    <div>
+                      <label className="block text-[11px] text-zinc-400 mb-1">新用户名</label>
+                      <input
+                        type="text"
+                        required
+                        value={newUsername}
+                        onChange={e => setNewUsername(e.target.value)}
+                        placeholder="输入新的用户名"
+                        className="w-full px-2.5 py-1.5 text-xs bg-zinc-800 border border-zinc-700 rounded text-zinc-100"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      className="px-3 py-1.5 text-xs rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-100 font-medium transition"
+                    >
+                      更新用户名
+                    </button>
+                  </form>
 
                   {/* 修改密码 */}
                   <form onSubmit={handleChangePassword} className="p-3 rounded-lg bg-zinc-900 border border-zinc-800 space-y-3">
@@ -361,7 +461,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       type="submit"
                       className="px-3 py-1.5 text-xs rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-100 font-medium transition"
                     >
-                      提交修改
+                      提交修改密码
                     </button>
                   </form>
                 </div>
@@ -798,6 +898,72 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   保存配置
                 </button>
                 {saveSuccess && <span className="ml-2 text-xs text-emerald-400">已保存</span>}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'admin' && isAdmin && (
+            <div className="space-y-4">
+              <div className="text-xs text-zinc-400">
+                超级管理员专属系统控制与注册权限设置：
+              </div>
+
+              {adminMsg && (
+                <div className={`p-2 rounded text-xs flex items-center space-x-1.5 ${adminMsg.type === 'success' ? 'bg-emerald-950/40 text-emerald-400 border border-emerald-800/40' : 'bg-rose-950/40 text-rose-400 border border-rose-800/40'}`}>
+                  {adminMsg.type === 'success' ? <Check className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" /> : <AlertCircle className="w-3.5 h-3.5 text-rose-400 flex-shrink-0" />}
+                  <span>{adminMsg.text}</span>
+                </div>
+              )}
+
+              {/* 用户注册总开关 */}
+              <div className="p-3.5 rounded-lg bg-zinc-900 border border-zinc-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-xs font-semibold text-zinc-100 flex items-center space-x-2">
+                      <Shield className="w-4 h-4 text-blue-400" />
+                      <span>开放新用户注册功能</span>
+                    </div>
+                    <div className="text-[11px] text-zinc-400 mt-1 leading-relaxed">
+                      {allowRegistration
+                        ? '【已开启】任何访问登录页面的访客均可自由注册新账号。'
+                        : '【已关闭】已禁止外部访客注册，登录页面隐藏或禁用注册入口。'}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleToggleRegistration}
+                    disabled={updatingAdmin}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-md flex items-center space-x-1.5 transition ${
+                      allowRegistration
+                        ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-600/30'
+                        : 'bg-zinc-800 text-zinc-400 border border-zinc-700 hover:bg-zinc-700'
+                    }`}
+                  >
+                    {allowRegistration ? (
+                      <>
+                        <ToggleRight className="w-4 h-4 text-emerald-400" />
+                        <span>已开放 (点击关闭)</span>
+                      </>
+                    ) : (
+                      <>
+                        <ToggleLeft className="w-4 h-4 text-zinc-400" />
+                        <span>已关闭 (点击开放)</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* 超级管理员凭据管理与修改说明 */}
+              <div className="p-3.5 rounded-lg bg-zinc-900 border border-zinc-800 space-y-2">
+                <div className="text-xs font-semibold text-zinc-200 flex items-center space-x-1.5">
+                  <KeyRound className="w-3.5 h-3.5 text-amber-400" />
+                  <span>管理员账号与密码修改途径</span>
+                </div>
+                <div className="text-[11px] text-zinc-400 leading-relaxed space-y-1.5">
+                  <p>• <strong>在网页中直接修改</strong>：切换到左侧第一项【用户账号】标签，可直接修改当前登录的管理员用户名和密码。</p>
+                  <p>• <strong>环境变量初始化配置</strong>：可在服务器或 1Panel 容器编排的 <code className="text-zinc-200 font-mono">.env</code> 或环境参数中配置 <code className="text-blue-400 font-mono">ADMIN_USERNAME</code> 与 <code className="text-blue-400 font-mono">ADMIN_PASSWORD</code>，服务初次启动或重启时将自动初始化该超级管理员账户。</p>
+                </div>
               </div>
             </div>
           )}

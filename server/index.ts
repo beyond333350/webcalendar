@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
@@ -27,21 +28,34 @@ const authenticateToken = (req: any, res: any, next: any) => {
 };
 
 // 认证路由
+app.get('/api/system/public-config', (req, res) => {
+  const allowReg = db.prepare("SELECT value FROM system_settings WHERE key = 'allow_registration'").get() as any;
+  res.json({
+    allow_registration: allowReg ? allowReg.value === '1' : true
+  });
+});
+
 app.post('/api/auth/register', (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) return res.status(400).json({ error: '用户名和密码不能为空' });
 
+  // 检查管理员是否关闭了注册
+  const allowReg = db.prepare("SELECT value FROM system_settings WHERE key = 'allow_registration'").get() as any;
+  if (allowReg && allowReg.value === '0') {
+    return res.status(403).json({ error: '管理员已关闭新用户注册' });
+  }
+
   try {
-    const existing = db.prepare('SELECT id FROM users WHERE username = ?').get(username);
+    const existing = db.prepare('SELECT id FROM users WHERE username = ?').get(username.trim());
     if (existing) return res.status(400).json({ error: '用户名已存在' });
 
     const hash = bcrypt.hashSync(password, 10);
-    const result = db.prepare('INSERT INTO users (username, password_hash) VALUES (?, ?)').run(username, hash);
+    const result = db.prepare('INSERT INTO users (username, password_hash, is_admin) VALUES (?, ?, 0)').run(username.trim(), hash);
     const userId = result.lastInsertRowid;
 
     db.prepare('INSERT INTO user_settings (user_id) VALUES (?)').run(userId);
-    const token = jwt.sign({ id: userId, username }, JWT_SECRET, { expiresIn: '7d' });
-    res.json({ token, username, userId });
+    const token = jwt.sign({ id: userId, username: username.trim(), isAdmin: false }, JWT_SECRET, { expiresIn: '7d' });
+    res.json({ token, username: username.trim(), userId, isAdmin: false });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -49,16 +63,46 @@ app.post('/api/auth/register', (req, res) => {
 
 app.post('/api/auth/login', (req, res) => {
   const { username, password } = req.body;
-  const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username) as any;
+  if (!username || !password) return res.status(400).json({ error: '用户名和密码不能为空' });
+
+  const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username.trim()) as any;
   if (!user || !bcrypt.compareSync(password, user.password_hash)) {
     return res.status(401).json({ error: '用户名或密码错误' });
   }
-  const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '7d' });
-  res.json({ token, username: user.username, userId: user.id });
+  const isAdmin = Boolean(user.is_admin);
+  const token = jwt.sign({ id: user.id, username: user.username, isAdmin }, JWT_SECRET, { expiresIn: '7d' });
+  res.json({ token, username: user.username, userId: user.id, isAdmin });
+});
+
+app.get('/api/auth/me', authenticateToken, (req: any, res: any) => {
+  const user = db.prepare('SELECT id, username, is_admin FROM users WHERE id = ?').get(req.user.id) as any;
+  if (!user) return res.status(404).json({ error: '用户不存在' });
+  res.json({ userId: user.id, username: user.username, isAdmin: Boolean(user.is_admin) });
+});
+
+app.post('/api/auth/update-username', authenticateToken, (req: any, res: any) => {
+  const { newUsername } = req.body;
+  if (!newUsername || !newUsername.trim()) {
+    return res.status(400).json({ error: '新用户名不能为空' });
+  }
+  const cleanName = newUsername.trim();
+  const existing = db.prepare('SELECT id FROM users WHERE username = ? AND id != ?').get(cleanName, req.user.id);
+  if (existing) {
+    return res.status(400).json({ error: '该用户名已被占用' });
+  }
+
+  db.prepare('UPDATE users SET username = ? WHERE id = ?').run(cleanName, req.user.id);
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id) as any;
+  const isAdmin = Boolean(user.is_admin);
+  const token = jwt.sign({ id: user.id, username: cleanName, isAdmin }, JWT_SECRET, { expiresIn: '7d' });
+  res.json({ success: true, token, username: cleanName, userId: user.id, isAdmin, message: '用户名修改成功' });
 });
 
 app.post('/api/auth/change-password', authenticateToken, (req: any, res: any) => {
   const { oldPassword, newPassword } = req.body;
+  if (!oldPassword || !newPassword) {
+    return res.status(400).json({ error: '原密码和新密码不能为空' });
+  }
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id) as any;
   if (!user || !bcrypt.compareSync(oldPassword, user.password_hash)) {
     return res.status(400).json({ error: '原密码错误' });
@@ -66,6 +110,32 @@ app.post('/api/auth/change-password', authenticateToken, (req: any, res: any) =>
   const newHash = bcrypt.hashSync(newPassword, 10);
   db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(newHash, req.user.id);
   res.json({ success: true, message: '密码修改成功' });
+});
+
+// 管理员系统设置接口
+app.get('/api/admin/system-settings', authenticateToken, (req: any, res: any) => {
+  const user = db.prepare('SELECT is_admin FROM users WHERE id = ?').get(req.user.id) as any;
+  if (!user || !user.is_admin) {
+    return res.status(403).json({ error: '无权访问管理员设置' });
+  }
+  const allowReg = db.prepare("SELECT value FROM system_settings WHERE key = 'allow_registration'").get() as any;
+  res.json({
+    allow_registration: allowReg ? allowReg.value === '1' : true
+  });
+});
+
+app.put('/api/admin/system-settings', authenticateToken, (req: any, res: any) => {
+  const user = db.prepare('SELECT is_admin FROM users WHERE id = ?').get(req.user.id) as any;
+  if (!user || !user.is_admin) {
+    return res.status(403).json({ error: '只有管理员可以修改系统设置' });
+  }
+  const { allow_registration } = req.body;
+  const val = allow_registration ? '1' : '0';
+  db.prepare(`
+    INSERT INTO system_settings (key, value) VALUES ('allow_registration', ?)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value
+  `).run(val);
+  res.json({ success: true, allow_registration: val === '1', message: '系统设置保存成功' });
 });
 
 // 设置路由
